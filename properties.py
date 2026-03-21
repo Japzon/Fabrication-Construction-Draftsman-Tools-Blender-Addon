@@ -1999,6 +1999,20 @@ class URDF_LightingProperties(bpy.types.PropertyGroup):
         update=core.update_scene_lighting
     )
 
+# --- Asset Library Helpers ---
+def get_asset_libraries_callback(self, context):
+    """Callback to populate the asset library dropdown"""
+    items = [('LOCAL', "Current File", "Assets in the current file", 'ASSET_MANAGER', 0)]
+    try:
+        libs = getattr(context.preferences.filepaths, "asset_libraries", [])
+        for i, lib in enumerate(libs):
+            if lib.name:
+                # Format: (identifier, name, description, icon, number)
+                items.append((lib.name, lib.name, str(lib.path), 'FILE_FOLDER', i + 1))
+    except Exception as e:
+        print(f"Error in get_asset_libraries_callback: {e}")
+    return items
+
 class URDF_AssetProperties(bpy.types.PropertyGroup):
     """
     Properties for the Asset Library System.
