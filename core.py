@@ -4677,11 +4677,10 @@ def update_single_bone_gizmo(bone: bpy.types.PoseBone, show_gizmos: bool) -> Non
                 if bone.length < 0.2 and props.joint_radius < 0.2:
                     base_scale = max(bone.length, props.joint_radius * 2.0)
                 
-        # Apply the user's visual radius for fine-tuning.
-        # If the user has explicitly set a radius, we use it directly.
-        # Otherwise, we use the auto-calculated base_scale.
-        final_scale = props.gizmo_radius
-
+        # Apply the user's visual radius as a multiplier on top of the calculated base scale.
+        # base_scale is in Blender Units (meters * s), ensuring the gizmo matches the part.
+        final_scale = base_scale * props.gizmo_radius
+        
         # Ensure the scale is never zero to prevent invisible gizmos.
         if final_scale < config.MIN_GIZMO_SCALE:
             final_scale = config.MIN_GIZMO_SCALE

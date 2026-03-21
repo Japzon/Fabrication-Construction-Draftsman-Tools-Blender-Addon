@@ -44,6 +44,132 @@ from . import properties
 #   PART 5: OPERATORS
 # ------------------------------------------------------------------------
 
+# --- ASSET LIBRARY SYSTEM OPERATORS ---
+# --- ASSET LIBRARY SYSTEM OPERATORS ---
+class URDF_OT_OpenAssetBrowser(bpy.types.Operator):
+    """Opens the Asset Browser in a new window"""
+    bl_idname = "urdf.open_asset_browser"
+    bl_label = "Open Asset Browser"
+    def execute(self, context):
+        try:
+            bpy.ops.wm.window_new()
+            new_window = context.window_manager.windows[-1]
+            area = new_window.screen.areas[0]
+            area.type = 'FILE_BROWSER'
+            area.ui_type = 'ASSETS'
+        except Exception:
+            pass
+        return {'FINISHED'}
+
+class URDF_OT_RegisterAssetCategory(bpy.types.Operator):
+    """Creates a new folder and registers it as a Blender Asset Library"""
+    bl_idname = "urdf.register_asset_category"
+    bl_label = "Register Category"
+    bl_description = "Creates a local folder and adds it to Blender's asset libraries list"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        props = context.scene.urdf_asset_props
+        name = props.category_name
+        
+        # Default path in Blender User Data Asset folder
+        base_path = os.path.join(bpy.utils.user_resource('DATAFILES'), "urdf_assets", name)
+        
+        try:
+            if not os.path.exists(base_path):
+                os.makedirs(base_path)
+        except Exception as e:
+            self.report({'ERROR'}, f"Failed to create directory: {e}")
+            return {'CANCELLED'}
+            
+        # Register in Blender Preferences
+        prefs = context.preferences
+        filepaths = prefs.filepaths
+        
+        exists = False
+        for lib in filepaths.asset_libraries:
+            if lib.name == name:
+                exists = True
+                break
+        
+        if not exists:
+            # Note: asset_library_add is a WM operator but we can call it.
+            bpy.ops.preferences.asset_library_add(directory=base_path)
+            # Find the newly added (last) and fix the name if needed (it might auto-name)
+            new_lib = filepaths.asset_libraries[-1]
+            new_lib.name = name
+            self.report({'INFO'}, f"Registered Library: {name}")
+        else:
+            self.report({'WARNING'}, f"Category '{name}' is already registered.")
+            
+        return {'FINISHED'}
+
+class URDF_OT_MarkAndUploadAsset(bpy.types.Operator):
+    """Marks selected as assets for the active library"""
+    bl_idname = "urdf.mark_and_upload_asset"
+    bl_label = "Mark Selected as Asset"
+    bl_description = "Tags the selected objects/collections as assets in the current file"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        if not context.selected_objects:
+            self.report({'WARNING'}, "No objects selected to mark as assets.")
+            return {'CANCELLED'}
+            
+        for obj in context.selected_objects:
+            if not obj.asset_data:
+                obj.asset_mark()
+                self.report({'INFO'}, f"Marked: {obj.name}")
+            else:
+                self.report({'INFO'}, f"Already marked: {obj.name}")
+        
+        props = context.scene.urdf_asset_props
+        lib_name = props.target_library
+        self.report({'INFO'}, f"Success. Save this file to your '{lib_name}' library to complete upload.")
+        
+        return {'FINISHED'}
+
+class URDF_OT_ImportToAssetCategory(bpy.types.Operator, ImportHelper):
+    """Imports an external file and prepares it as an asset"""
+    bl_idname = "urdf.import_to_asset_category"
+    bl_label = "Import to Active Category"
+    bl_description = "Imports a 3D file and marks it as an asset automatically"
+    
+    filename_ext = ".obj;.fbx;.gltf;.glb;.stl"
+    filter_glob: bpy.props.StringProperty(default="*.obj;*.fbx;*.gltf;*.glb;*.stl", options={'HIDDEN'})
+
+    def execute(self, context):
+        filepath = self.filepath
+        ext = os.path.splitext(filepath)[1].lower()
+        
+        # Deselect to track imported
+        bpy.ops.object.select_all(action='DESELECT')
+        
+        try:
+            if ext == '.obj':
+                bpy.ops.wm.obj_import(filepath=filepath)
+            elif ext == '.fbx':
+                bpy.ops.import_scene.fbx(filepath=filepath)
+            elif ext in ['.gltf', '.glb']:
+                bpy.ops.import_scene.gltf(filepath=filepath)
+            elif ext == '.stl':
+                bpy.ops.wm.stl_import(filepath=filepath)
+            else:
+                self.report({'ERROR'}, f"Unsupported format: {ext}")
+                return {'CANCELLED'}
+                
+            # Mark imported as asset
+            for obj in context.selected_objects:
+                obj.asset_mark()
+                
+            self.report({'INFO'}, f"Imported and marked {os.path.basename(filepath)}")
+        except Exception as e:
+            self.report({'ERROR'}, f"Import failed: {e}")
+            return {'CANCELLED'}
+            
+        return {'FINISHED'}
+
+# --- MAIN OPERATORS ---
 class OPS_OT_Execute_AI_Prompt(bpy.types.Operator):
     """
     Executes the AI generation process based on the user's prompt.
@@ -5632,12 +5758,57 @@ class URDF_OT_ToonifySelectedLights(bpy.types.Operator):
         return {'FINISHED'}
 
 def register():
-    for cls in [URDF_OT_LightTarget, URDF_OT_ApplyToonShader, URDF_OT_GlobalToonSharpness, URDF_OT_ToonifySelectedLights, OPS_OT_Execute_AI_Prompt, URDF_OT_Generate_Preset, URDF_OT_SetJointType, OPS_OT_CalculateCenterOfMass, OPS_OT_CalculateInertia, OPS_OT_BakeMesh, URDF_OT_ReadJointSettings, URDF_OT_ApplyJointSettings, OPS_OT_SetupIK, OPS_OT_SetOriginToCursor, URDF_OT_Material_AddSmart, URDF_OT_Material_LoadTexture, URDF_OT_Material_FromImage, URDF_OT_AddMappingNodes, URDF_OT_UV_SmartUnwrap, URDF_OT_Material_Merge, URDF_OT_Material_Add, URDF_UL_Mat_List, URDF_UL_SlinkyHooks_List, URDF_OT_Paint_SetupBrush, OPS_OT_ExportGazeboWorld, OPS_OT_LinkChainDriver, OPS_OT_AddBoolean, URDF_OT_AddParametricAnchor, URDF_OT_AddMarker, URDF_OT_ToggleHookPlacement, URDF_OT_CleanupAnchor, URDF_OT_BakeAnchor, URDF_OT_AddTextDescription, URDF_OT_RemoveDimension, URDF_OT_AddDimension, OPS_OT_AddModifier, OPS_OT_AddSimplify, OPS_OT_SetupLinearArray, OPS_OT_SetupRadialArray, OPS_OT_CreateCurveForPath, OPS_OT_SetupCurveArray, OPS_OT_SmartSmooth, OPS_OT_CreatePart, OPS_OT_ChainAddWrapObject, OPS_OT_CreateElectronicPart, OPS_OT_ChainAddPickedWrapObject, OPS_OT_ChainRemoveWrapObject, URDF_OT_SlinkyAddHook, URDF_OT_SlinkyRemoveHook, OPS_OT_CalculateRatio, OPS_OT_AddMimic, OPS_OT_RemoveMimic, OPS_OT_ClearConfig, OPS_OT_ApplyBoneConstraints, OPS_OT_PickBone, URDF_OT_GenerateROS2Workspace, URDF_ExportItem, URDF_UL_ExportList, URDF_OT_ExportList_Add, URDF_OT_ExportList_Remove, OPS_OT_Export, URDF_OT_ExportSelected, OPS_OT_TogglePlacement, OPS_OT_CreateRig, URDF_OT_MergeArmatures, URDF_OT_PurgeBones, OPS_OT_ParentToActive, OPS_OT_EnterPoseMode, OPS_OT_EnterObjectMode, OPS_OT_AddBone, URDF_OT_ApplyRestPose]:
+    CLASSES = [
+        URDF_OT_OpenAssetBrowser, URDF_OT_RegisterAssetCategory, URDF_OT_MarkAndUploadAsset, URDF_OT_ImportToAssetCategory,
+        URDF_OT_LightTarget, URDF_OT_ApplyToonShader, URDF_OT_GlobalToonSharpness, URDF_OT_ToonifySelectedLights, 
+        OPS_OT_Execute_AI_Prompt, URDF_OT_Generate_Preset, URDF_OT_SetJointType, OPS_OT_CalculateCenterOfMass, 
+        OPS_OT_CalculateInertia, OPS_OT_BakeMesh, URDF_OT_ReadJointSettings, URDF_OT_ApplyJointSettings, 
+        OPS_OT_SetupIK, OPS_OT_SetOriginToCursor, URDF_OT_Material_AddSmart, URDF_OT_Material_LoadTexture, 
+        URDF_OT_Material_FromImage, URDF_OT_AddMappingNodes, URDF_OT_UV_SmartUnwrap, URDF_OT_Material_Merge, 
+        URDF_OT_Material_Add, URDF_UL_Mat_List, URDF_UL_SlinkyHooks_List, URDF_OT_Paint_SetupBrush, 
+        OPS_OT_ExportGazeboWorld, OPS_OT_LinkChainDriver, OPS_OT_AddBoolean, URDF_OT_AddParametricAnchor, 
+        URDF_OT_AddMarker, URDF_OT_ToggleHookPlacement, URDF_OT_CleanupAnchor, URDF_OT_BakeAnchor, 
+        URDF_OT_AddTextDescription, URDF_OT_RemoveDimension, URDF_OT_AddDimension, OPS_OT_AddModifier, 
+        OPS_OT_AddSimplify, OPS_OT_SetupLinearArray, OPS_OT_SetupRadialArray, OPS_OT_CreateCurveForPath, 
+        OPS_OT_SetupCurveArray, OPS_OT_SmartSmooth, OPS_OT_CreatePart, OPS_OT_ChainAddWrapObject, 
+        OPS_OT_CreateElectronicPart, OPS_OT_ChainAddPickedWrapObject, OPS_OT_ChainRemoveWrapObject, 
+        URDF_OT_SlinkyAddHook, URDF_OT_SlinkyRemoveHook, OPS_OT_CalculateRatio, OPS_OT_AddMimic, 
+        OPS_OT_RemoveMimic, OPS_OT_ClearConfig, OPS_OT_ApplyBoneConstraints, OPS_OT_PickBone, 
+        URDF_OT_GenerateROS2Workspace, URDF_ExportItem, URDF_UL_ExportList, URDF_OT_ExportList_Add, 
+        URDF_OT_ExportList_Remove, OPS_OT_Export, URDF_OT_ExportSelected, OPS_OT_TogglePlacement, 
+        OPS_OT_CreateRig, URDF_OT_MergeArmatures, URDF_OT_PurgeBones, OPS_OT_ParentToActive, 
+        OPS_OT_EnterPoseMode, OPS_OT_EnterObjectMode, OPS_OT_AddBone, URDF_OT_ApplyRestPose
+    ]
+    for cls in CLASSES:
         try:
             bpy.utils.register_class(cls)
         except Exception:
             pass
 
 def unregister():
-    for cls in reversed([URDF_OT_LightTarget, URDF_OT_ApplyToonShader, URDF_OT_GlobalToonSharpness, URDF_OT_ToonifySelectedLights, OPS_OT_Execute_AI_Prompt, URDF_OT_Generate_Preset, URDF_OT_SetJointType, OPS_OT_CalculateCenterOfMass, OPS_OT_CalculateInertia, OPS_OT_BakeMesh, URDF_OT_ReadJointSettings, URDF_OT_ApplyJointSettings, OPS_OT_SetupIK, OPS_OT_SetOriginToCursor, URDF_OT_Material_AddSmart, URDF_OT_Material_LoadTexture, URDF_OT_Material_FromImage, URDF_OT_AddMappingNodes, URDF_OT_UV_SmartUnwrap, URDF_OT_Material_Merge, URDF_OT_Material_Add, URDF_UL_Mat_List, URDF_UL_SlinkyHooks_List, URDF_OT_Paint_SetupBrush, OPS_OT_ExportGazeboWorld, OPS_OT_LinkChainDriver, OPS_OT_AddBoolean, URDF_OT_AddParametricAnchor, URDF_OT_AddMarker, URDF_OT_ToggleHookPlacement, URDF_OT_CleanupAnchor, URDF_OT_BakeAnchor, URDF_OT_AddTextDescription, URDF_OT_RemoveDimension, URDF_OT_AddDimension, OPS_OT_AddModifier, OPS_OT_AddSimplify, OPS_OT_SetupLinearArray, OPS_OT_SetupRadialArray, OPS_OT_CreateCurveForPath, OPS_OT_SetupCurveArray, OPS_OT_SmartSmooth, OPS_OT_CreatePart, OPS_OT_ChainAddWrapObject, OPS_OT_CreateElectronicPart, OPS_OT_ChainAddPickedWrapObject, OPS_OT_ChainRemoveWrapObject, URDF_OT_SlinkyAddHook, URDF_OT_SlinkyRemoveHook, OPS_OT_CalculateRatio, OPS_OT_AddMimic, OPS_OT_RemoveMimic, OPS_OT_ClearConfig, OPS_OT_ApplyBoneConstraints, OPS_OT_PickBone, URDF_OT_GenerateROS2Workspace, URDF_ExportItem, URDF_UL_ExportList, URDF_OT_ExportList_Add, URDF_OT_ExportList_Remove, OPS_OT_Export, URDF_OT_ExportSelected, OPS_OT_TogglePlacement, OPS_OT_CreateRig, URDF_OT_MergeArmatures, URDF_OT_PurgeBones, OPS_OT_ParentToActive, OPS_OT_EnterPoseMode, OPS_OT_EnterObjectMode, OPS_OT_AddBone, URDF_OT_ApplyRestPose]):
-        bpy.utils.unregister_class(cls)
+    CLASSES = [
+        URDF_OT_OpenAssetBrowser, URDF_OT_RegisterAssetCategory, URDF_OT_MarkAndUploadAsset, URDF_OT_ImportToAssetCategory,
+        URDF_OT_LightTarget, URDF_OT_ApplyToonShader, URDF_OT_GlobalToonSharpness, URDF_OT_ToonifySelectedLights, 
+        OPS_OT_Execute_AI_Prompt, URDF_OT_Generate_Preset, URDF_OT_SetJointType, OPS_OT_CalculateCenterOfMass, 
+        OPS_OT_CalculateInertia, OPS_OT_BakeMesh, URDF_OT_ReadJointSettings, URDF_OT_ApplyJointSettings, 
+        OPS_OT_SetupIK, OPS_OT_SetOriginToCursor, URDF_OT_Material_AddSmart, URDF_OT_Material_LoadTexture, 
+        URDF_OT_Material_FromImage, URDF_OT_AddMappingNodes, URDF_OT_UV_SmartUnwrap, URDF_OT_Material_Merge, 
+        URDF_OT_Material_Add, URDF_UL_Mat_List, URDF_UL_SlinkyHooks_List, URDF_OT_Paint_SetupBrush, 
+        OPS_OT_ExportGazeboWorld, OPS_OT_LinkChainDriver, OPS_OT_AddBoolean, URDF_OT_AddParametricAnchor, 
+        URDF_OT_AddMarker, URDF_OT_ToggleHookPlacement, URDF_OT_CleanupAnchor, URDF_OT_BakeAnchor, 
+        URDF_OT_AddTextDescription, URDF_OT_RemoveDimension, URDF_OT_AddDimension, OPS_OT_AddModifier, 
+        OPS_OT_AddSimplify, OPS_OT_SetupLinearArray, OPS_OT_SetupRadialArray, OPS_OT_CreateCurveForPath, 
+        OPS_OT_SetupCurveArray, OPS_OT_SmartSmooth, OPS_OT_CreatePart, OPS_OT_ChainAddWrapObject, 
+        OPS_OT_CreateElectronicPart, OPS_OT_ChainAddPickedWrapObject, OPS_OT_ChainRemoveWrapObject, 
+        URDF_OT_SlinkyAddHook, URDF_OT_SlinkyRemoveHook, OPS_OT_CalculateRatio, OPS_OT_AddMimic, 
+        OPS_OT_RemoveMimic, OPS_OT_ClearConfig, OPS_OT_ApplyBoneConstraints, OPS_OT_PickBone, 
+        URDF_OT_GenerateROS2Workspace, URDF_ExportItem, URDF_UL_ExportList, URDF_OT_ExportList_Add, 
+        URDF_OT_ExportList_Remove, OPS_OT_Export, URDF_OT_ExportSelected, OPS_OT_TogglePlacement, 
+        OPS_OT_CreateRig, URDF_OT_MergeArmatures, URDF_OT_PurgeBones, OPS_OT_ParentToActive, 
+        OPS_OT_EnterPoseMode, OPS_OT_EnterObjectMode, OPS_OT_AddBone, URDF_OT_ApplyRestPose
+    ]
+    for cls in reversed(CLASSES):
+        try:
+            bpy.utils.unregister_class(cls)
+        except Exception:
+            pass
