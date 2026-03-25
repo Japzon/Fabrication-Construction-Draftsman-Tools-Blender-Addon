@@ -4735,6 +4735,13 @@ def clean_conflicting_mechanics(bone: bpy.types.PoseBone) -> None:
     for d in drivers_to_remove:
         drivers.remove(d)
 
+def remove_all_urdf_constraints(bone: bpy.types.PoseBone) -> None:
+    """Helper to thoroughly remove all limit constraints created by the addon."""
+    from .config import MOD_PREFIX
+    for c in list(bone.constraints):
+        if c.name.startswith(f"{MOD_PREFIX}Limit_Rot") or c.name.startswith(f"{MOD_PREFIX}Limit_Loc"):
+            bone.constraints.remove(c)
+
 def apply_native_constraints(bone: bpy.types.PoseBone) -> None:
     """
     Applies all native Blender constraints (FK locks, IK limits, and Limit
@@ -4785,11 +4792,8 @@ def apply_native_constraints(bone: bpy.types.PoseBone) -> None:
         bone.use_ik_limit_x = False
         bone.use_ik_limit_y = False
         bone.use_ik_limit_z = False
-        # Remove any existing Limit constraints created by this addon.
-        for c_name in [f"{MOD_PREFIX}Limit_Rot", f"{MOD_PREFIX}Limit_Loc"]:
-            c = bone.constraints.get(c_name)
-            if c:
-                bone.constraints.remove(c)
+        
+        remove_all_urdf_constraints(bone)
         return
 
     if props.joint_type in ['none', 'base']:
@@ -4802,10 +4806,8 @@ def apply_native_constraints(bone: bpy.types.PoseBone) -> None:
         bone.use_ik_limit_x = False
         bone.use_ik_limit_y = False
         bone.use_ik_limit_z = False
-        for c_name in [f"{MOD_PREFIX}Limit_Rot", f"{MOD_PREFIX}Limit_Loc"]:
-            c = bone.constraints.get(c_name)
-            if c:
-                bone.constraints.remove(c)
+        
+        remove_all_urdf_constraints(bone)
         return
 
     # --- 2. Calculate the Desired Constraint State ---
@@ -4816,11 +4818,7 @@ def apply_native_constraints(bone: bpy.types.PoseBone) -> None:
     ik_use_limit_rot = [True, True, True]
     ik_rot_limits = [(0, 0), (0, 0), (0, 0)]
 
-    # Remove any pre-existing limit constraints to ensure a clean state.
-    for c_name in [f"{MOD_PREFIX}Limit_Rot", f"{MOD_PREFIX}Limit_Loc"]:
-        c = bone.constraints.get(c_name)
-        if c:
-            bone.constraints.remove(c)
+    remove_all_urdf_constraints(bone)
 
     if props.joint_type in ['revolute', 'continuous']:
         # For rotational joints, unlock the appropriate rotation axis for both FK and IK.
@@ -4878,6 +4876,7 @@ def apply_native_constraints(bone: bpy.types.PoseBone) -> None:
     bone.lock_ik_y = ik_lock_loc[1]
     bone.lock_ik_z = ik_lock_loc[2]
 
+    # --- AI Editor Note: Apply rotation IK limits where applicable ---
     bone.use_ik_limit_x = ik_use_limit_rot[0]
     bone.use_ik_limit_y = ik_use_limit_rot[1]
     bone.use_ik_limit_z = ik_use_limit_rot[2]
@@ -4948,6 +4947,8 @@ def urdf_prop_update(self, context, prop_name: str):
     setting properties on other objects from within an update callback.
     """
     global _prop_update_guard
+    if _prop_update_guard:
+        return
 
     # The bone this property group instance belongs to
     this_bone = self.id_data
@@ -4975,25 +4976,28 @@ def urdf_prop_update(self, context, prop_name: str):
     clean_conflicting_mechanics(this_bone)
     update_single_bone_gizmo(this_bone, context.scene.urdf_viz_gizmos)
     apply_native_constraints(this_bone)
+    # Special handling for relationships and IK
+    if prop_name in {'ratio_value', 'ratio_invert'} and self.ratio_target_bone:
+        add_native_driver_relation(this_bone, self.ratio_target_bone, self.ratio_value, self.ratio_invert)
+    elif prop_name == 'ik_chain_length':
+        update_ik_chain_length(self, context)
 
     # --- Part 2: Propagation for Multi-Object Editing (with guard) ---
-    if _prop_update_guard:
-        return
-
+    # Guard is already checked at the top, but we'll use a local one for safety here if needed.
+    # We only propagate from the active bone to others.
     active_bone = context.active_pose_bone
     if active_bone and this_bone == active_bone:
         _prop_update_guard = True
         try:
             new_value = getattr(self, prop_name)
             
-            # In Blender 3.2+, use selected_pose_bones_from_active_object
-            bones_to_update = context.selected_pose_bones_from_active_object
+            # Use safe bone gathering for multi-object editing.
+            # Compatibility with Blender 3.2+ and fallback for older versions.
+            bones_to_update = getattr(context, 'selected_pose_bones_from_active_object', context.selected_pose_bones)
             for bone in bones_to_update:
                 if bone != active_bone:
-                    # This will trigger this same update function on the other bone.
-                    # The guard will prevent recursion, and the active_bone check
-                    # will prevent this propagation block from running again.
-                    # The state update in Part 1 will run for each bone.
+                    # Setting this property will call urdf_prop_update(bone, ...)
+                    # which will trigger Part 1 for that bone, and then return because of _prop_update_guard.
                     if getattr(bone.urdf_props, prop_name) != new_value:
                         setattr(bone.urdf_props, prop_name, new_value)
         finally:
@@ -5190,18 +5194,16 @@ def urdf_joint_editor_update_callback(self, context):
 
 def update_ratio_live(self: 'URDF_Properties', context: bpy.types.Context) -> None:
     """
-    Update callback for the ratio value slider in the gear ratio UI.
-
-    This function is triggered when the user changes the 'Ratio' value for a
-    gear/mimic relationship. It provides live feedback by immediately calling
-    `add_native_driver_relation` to update the driver with the new ratio.
-
-    Args:
-        self: The `URDF_Properties` instance that was changed.
-        context: The current Blender context.
+    Update callback for relationship properties in the bone editor.
+    Propagates changes to other selected bones via the standard update logic.
     """
-    if context.active_pose_bone and self.ratio_target_bone:
-        add_native_driver_relation(context.active_pose_bone, self.ratio_target_bone, self.ratio_value, self.ratio_invert)
+    urdf_prop_update(self, context, 'ratio_value')
+
+def update_ratio_invert(self: 'URDF_Properties', context: bpy.types.Context) -> None:
+    """
+    Update callback for the ratio inversion toggle in the bone editor.
+    """
+    urdf_prop_update(self, context, 'ratio_invert')
 
 def cleanup_unused_gizmos(context: bpy.types.Context) -> None:
     """

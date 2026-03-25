@@ -211,8 +211,8 @@ ALL_CATEGORIES_SORTED = sorted(MECH_CATEGORIES_RAW + [('ELECTRONICS', "Electroni
 
 # --- Kinematic Bone Alignment Enums ---
 BONE_MODES: List[Tuple[str, str, str]] = [
-    ('SINGLE', "By Group", "Align only the active object to a bone"),
-    ('INDIVIDUAL', "Individually", "Align each selected object to its own bone")
+    ('SINGLE', "Joint Editor", "Use the global joint tool to edit all selected bones at once"),
+    ('INDIVIDUAL', "Bone Editor", "Edit each selected bone's URDF properties individually")
 ]
 
 BONE_AXES: List[Tuple[str, str, str]] = [

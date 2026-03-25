@@ -125,7 +125,7 @@ class URDF_PT_KinematicsSetup:
                 # visibility and multi-object editing issues.
                 tool_props = scene.urdf_joint_editor_settings
                 
-                # Header with Read/Apply operators
+                # Header
                 header = joint_editor_box.row(align=True)
                 header.label(text="Joint Editor Tool", icon='CONSTRAINT_BONE')
 
@@ -150,10 +150,10 @@ class URDF_PT_KinematicsSetup:
                     row.prop(tool_props, "lower_limit")
                     row.prop(tool_props, "upper_limit")
 
-                # --- AI Editor Note: Moved Joint Placement here ---
+                # Joint Placement Mode
                 placement_box = joint_editor_box.box()
                 placement_box.label(text="Joint Placement Mode", icon='POSE_HLT')
-                if scene.urdf_placement_mode:
+                if hasattr(scene, "urdf_placement_mode") and scene.urdf_placement_mode:
                     placement_box.operator("urdf.toggle_placement", text="Stop Joint Placement Mode", icon='CANCEL')
                 else:
                     placement_box.operator("urdf.toggle_placement", text="Start Joint Placement Mode", icon='POSE_HLT')
@@ -167,9 +167,12 @@ class URDF_PT_KinematicsSetup:
 
                 # Gear Ratio / Mimic
                 # This part still needs an active bone to determine the target for prop_search
-                if context.active_pose_bone:
-                    pb = context.active_pose_bone
-                    props = pb.urdf_props
+                # This part requires an active bone and associated rig
+                active_bone = context.active_pose_bone
+                active_obj = context.active_object
+                
+                if active_bone and active_obj and active_obj.type == 'ARMATURE':
+                    props = active_bone.urdf_props
                     ratio_box = relations_box.box()
                     ratio_box.label(text="Gear Ratio / Mimic", icon='CONSTRAINT')
                     if len(props.mimic_drivers) > 0:
@@ -182,16 +185,16 @@ class URDF_PT_KinematicsSetup:
                     add_box = ratio_box.box()
                     add_box.label(text="Add New Driver:")
                     row_t = add_box.row(align=True)
-                    if context.object and context.object.type == 'ARMATURE' and context.object.pose:
-                        row_t.prop_search(props, "ratio_target_bone", context.object.pose, "bones", text="Target")
+                    if active_obj.pose:
+                        row_t.prop_search(props, "ratio_target_bone", active_obj.pose, "bones", text="Target")
                         op_t = row_t.operator("urdf.pick_bone", text="", icon='EYEDROPPER')
                         op_t.mode = 0
                         row_ref = add_box.row(align=True)
-                        row_ref.prop_search(props, "ratio_ref_bone", context.object.pose, "bones", text="Ref Bone")
+                        row_ref.prop_search(props, "ratio_ref_bone", active_obj.pose, "bones", text="Ref Bone")
                         op_r = row_ref.operator("urdf.pick_bone", text="", icon='EYEDROPPER')
                         op_r.mode = 1
                     else:
-                        row_t.label(text="Select an ARM/Rig to edit", icon='ERROR')
+                        row_t.label(text="Select an ARM/Rig for relationships", icon='ERROR')
                     row_r = add_box.row(align=True)
                     row_r.prop(props, "ratio_value")
                     row_r.prop(props, "ratio_invert", text="Invert", toggle=True)

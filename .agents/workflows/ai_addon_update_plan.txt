@@ -39,6 +39,8 @@ The core.py file holds pure utility and backend functions like Gizmo updates, Ri
 
 The panels user interface files contain separated logic grouping layout drawing functions like the draw definitions.
 
+Multiple Item Synchronization. All operators and property update callbacks must robustly iterate through all selected bones (in Pose Mode) or selected objects (in Object Mode) to ensure that changes propagate across the entire user selection simultaneously. Avoid logic that only affects the active item unless explicitly intended.
+
 4. Feature Creation and Extension Sequence
 
 When asked to implement or update a function, execute this sequence strictly.
