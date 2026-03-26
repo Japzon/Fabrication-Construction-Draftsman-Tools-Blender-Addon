@@ -20,66 +20,82 @@ class URDF_PT_ArchitecturalPresets:
     Drawing helper for the 'Architectural Presets' panel.
     """
 
+    @classmethod
+    def poll(cls, context: bpy.types.Context) -> bool:
+        # Check if the panel is enabled in scene properties
+        return getattr(context.scene, "urdf_panel_enabled_architectural", True)
+
     @staticmethod
-    def draw(layout, context):
+    def draw(layout: bpy.types.UILayout, context: bpy.types.Context) -> None:
+        """
+        Main drawing logic for the Architectural Presets drawing helper.
+        """
         scene = context.scene
         
-        # --- Header Section ---
-        box, is_expanded = ui_common.draw_panel_header(layout, context, "Architectural Presets", "urdf_show_panel_architectural", "urdf_panel_enabled_architectural")
+        # 1. Standardized Header
+        box, is_expanded = ui_common.draw_panel_header(
+            layout, context, 
+            "Architectural Presets", 
+            "urdf_show_panel_architectural", 
+            "urdf_panel_enabled_architectural"
+        )
         
         if not is_expanded:
             return
 
-        # --- Selection Section ---
-        sel_box = layout.box()
-        sel_box.label(text="Select Element", icon='RESTRICT_SELECT_OFF')
-        sel_box.prop(scene, "urdf_architectural_type", text="Structural Type")
+        # 2. Main Generation Controls
+        col = box.column(align=True)
+        col.label(text="Select Element", icon='RESTRICT_SELECT_OFF')
+        col.prop(scene, "urdf_architectural_type", text="Structural Type")
         
-        # --- Generation Trigger ---
-        gen_row = sel_box.row(align=True)
+        gen_row = col.row(align=True)
         gen_row.scale_y = 1.2
         op = gen_row.operator("urdf.create_part", text="Generate Preset", icon='PLUS')
         op.category = 'ARCHITECTURAL'
         op.type_sub = scene.urdf_architectural_type
         
-        # --- Property Editing Section (Active Object) ---
+        # 3. Dynamic Edit Section for Active Architectural Part
         obj = context.active_object
-        if obj and hasattr(obj, "urdf_mech_props") and obj.urdf_mech_props.is_part:
+        # Ensure object has the required property group and it's initialized
+        if obj and hasattr(obj, "urdf_mech_props"):
             props = obj.urdf_mech_props
-            if props.category == 'ARCHITECTURAL':
-                edit_box = layout.box()
+            
+            # Explicitly check if the object belongs to this UI module
+            if props.is_part and props.category == 'ARCHITECTURAL':
+                box.separator()
+                edit_box = box.box()
                 edit_box.label(text=f"Edit {obj.name}", icon='WRENCH')
                 
-                # Show specific properties based on type
-                if props.type_architectural == 'WALL':
-                    edit_box.prop(props, "length")
-                    edit_box.prop(props, "height")
-                    edit_box.prop(props, "wall_thickness")
-                elif props.type_architectural == 'WINDOW':
-                    edit_box.prop(props, "length", text="Width")
-                    edit_box.prop(props, "height")
-                    edit_box.prop(props, "window_frame_thickness")
-                    edit_box.prop(props, "glass_thickness")
-                elif props.type_architectural == 'DOOR':
-                    edit_box.prop(props, "length", text="Width")
-                    edit_box.prop(props, "height")
-                    edit_box.prop(props, "window_frame_thickness", text="Frame Thickness")
-                elif props.type_architectural == 'COLUMN':
-                    edit_box.prop(props, "radius")
-                    edit_box.prop(props, "height")
-                elif props.type_architectural == 'BEAM':
-                    edit_box.prop(props, "length")
-                    edit_box.prop(props, "width")
-                    edit_box.prop(props, "height")
-                elif props.type_architectural == 'STAIRS':
-                    edit_box.prop(props, "length", text="Stair Width")
-                    edit_box.prop(props, "step_count")
-                    edit_box.prop(props, "step_height")
-                    edit_box.prop(props, "step_depth")
-
-                # Bake Button
-                layout.separator()
-                layout.operator("urdf.bake_mesh", text="Bake Architectural Mesh", icon='CHECKMARK')
+                # Fetch type label safely
+                raw_type = str(props.type_architectural)
+                type_label = raw_type.replace('_', ' ').title()
+                edit_box.label(text=f"Type: {type_label}", icon='OUTLINER_OB_MESH')
+                
+                edit_col = edit_box.column(align=True)
+                
+                # Draw shared properties first
+                if raw_type in {'WALL', 'WINDOW', 'DOOR', 'BEAM', 'STAIRS'}:
+                    edit_col.prop(props, "length")
+                if raw_type in {'WALL', 'WINDOW', 'DOOR', 'COLUMN', 'STAIRS'}:
+                    edit_col.prop(props, "height")
+                
+                # Draw type-specific properties
+                if raw_type == 'WALL':
+                    edit_col.prop(props, "wall_thickness")
+                elif raw_type == 'WINDOW':
+                    edit_col.prop(props, "window_frame_thickness")
+                    edit_col.prop(props, "glass_thickness")
+                elif raw_type == 'DOOR':
+                    edit_col.prop(props, "window_frame_thickness", text="Frame Thickness")
+                elif raw_type == 'COLUMN':
+                    edit_col.prop(props, "radius")
+                elif raw_type == 'STAIRS':
+                    edit_col.prop(props, "step_count")
+                    edit_col.prop(props, "step_height")
+                    edit_col.prop(props, "step_depth")
+                
+                edit_box.separator()
+                edit_box.operator("urdf.bake_mesh", text="Bake to Static Mesh", icon='CHECKBOX_HLT')
 
 def register():
     # No classes to register here as it's a helper

@@ -1,39 +1,23 @@
 # Fabrication & Construction Draftsman Tools (Automated) - AI Update Plan
 
 ## Objective
-Establish a robust framework for procedural generation and UI management. All updates must adhere to the "Native-First" philosophy (Geometry Nodes, Drivers, native modifiers) and ensure real-time visual feedback.
+Fix persistent UI errors in the Architectural Presets panel and enable Edit Mode vertex-to-vertex measuring in the Dimensions & Measuring toolkit.
 
-## Strict Naming Conventions
-- **GUI Labels**: Match Blender's standard naming where possible, or use the "Literal" names defined in `config.py`.
-- **Property Names**: Use clear, category-prefixed names (e.g., `gear_radius`, `wall_thickness`).
-- **Object Prefixes**: Use `MOD_PREFIX` (URDF_), `CUTTER_PREFIX` (URDF_Cutter_), etc., to keep the scene organized and scripts robust.
+## Tasks
+1. **Fix Architectural Panel TypeError**:
+   - Re-check the `draw` method signature and ensure no `self` references exist in static methods.
+   - Standardize `ui_dimensions.py` to use `ui_common.draw_panel_header` to prevent manual drawing errors.
+   - Add `@classmethod poll` to all drawing helpers for consistency with the master UI loop.
+   
+2. **Fix Dimensions Edit Mode Measuring**:
+   - Update `URDF_OT_AddDimension` in `operators.py` to correctly handle vertex selection in Edit Mode.
+   - Ensure `bm.verts.ensure_lookup_table()` is called before accessing vertex indices.
+   - Use `bm.select_history` for ordering, with a robust fallback to the selection list if history is empty.
+
+3. **UI Robustness**:
+   - Standardize all icons and labels to use the "Literal" naming convention.
+   - Ensure `draw_panel_header` is called with exactly 5 arguments in all modules.
 
 ## Procedural Safety
-- **Update Guards**: Always check `_prop_update_guard` in update callbacks to prevent recursion.
-- **Depsgraph Awareness**: Use `evaluated_get(depsgraph)` for all mesh-bound calculations to account for real-time modifiers/GN.
-- **BMesh Merging**: Procedural mesh generation must always finish with `bmesh.ops.remove_doubles` with a `WELD_THRESHOLD` to ensure stable Booleans.
-- **Syntax & Indentation**: Ensure all `if/elif` blocks contain a valid indented statement (use `pass` if the block is empty).
-- **Property Injection**: When adding new properties to `URDF_MechProps`, ensure they are placed within the class body and NOT inside a function.
-- **Registration Safety**: Use try/except blocks when calling `bpy.utils.register_class` for operators that might be shared across modules, or centralize them in `operators.py`.
-- **Import Hygiene**: Avoid circular imports or self-imports (e.g., `from . import ui_common` inside `ui_common.py`).
-
-## Workflows
-
-### 1. Adding a New Parametric Category
-1.  **Config**: Add category and sub-types to `config.py`.
-2.  **Properties**: Add `type_<category>` and specific geometry properties to `URDF_MechProps` in `properties.py`.
-3.  **Generators**: Implement `generate_<category>_mesh(bm, props, obj)` in `properties.py`.
-4.  **Dispatcher**: Update `regenerate_mech_mesh` and `wrapper_regenerate` in `properties.py`.
-5.  **Core**: Update `create_parametric_part_object` and Enum callbacks in `core.py`.
-6.  **UI**: Create/Update a panel in `panels/` to expose the properties.
-
-### 2. Gizmo and Joint Logic
-- Gizmos must scale proportionally with the mesh.
-- When `props.joint_radius` is updated, `core.update_single_bone_gizmo` MUST be triggered.
-- `rig_parametric_joint` is the central rigging operator and must use the fixed `_calculate_bone_geometry` (Evaluated Mesh).
-
-## Active Tasks (Session Summary)
-- [x] Create 'Architectural Presets' Panel (Walls, Windows, Doors, etc.).
-- [x] Implement BMesh generators for Architectural elements.
-- [x] Fix Joint Gizmo scaling bug by using evaluated mesh bounds.
-- [x] Ensure real-time gizmo refresh during property changes.
+- **Layout Consistency**: Always use the first return value of `draw_panel_header` (the `box`) as the base for panel content.
+- **BMesh Safety**: Always call `ensure_lookup_table()` after `from_edit_mesh`.

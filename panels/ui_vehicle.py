@@ -27,55 +27,68 @@ class URDF_PT_VehiclePresets:
 
     @staticmethod
     def draw(layout: bpy.types.UILayout, context: bpy.types.Context) -> None:
+        """
+        Main drawing logic for the Vehicle Presets drawing helper.
+        """
         scene = context.scene
-        # --- Header ---
-        box, is_expanded = ui_common.draw_panel_header(layout, context, "Vehicle Presets", "urdf_show_panel_vehicle", "urdf_panel_enabled_vehicle")
+        
+        # 1. Standardized Header
+        box, is_expanded = ui_common.draw_panel_header(
+            layout, context, 
+            "Vehicle Presets", 
+            "urdf_show_panel_vehicle", 
+            "urdf_panel_enabled_vehicle"
+        )
+        
+        if not is_expanded:
+            return
 
-        if is_expanded:
-            # --- Generation Size Constraint ---
-            cage_box = box.box()
-            cage_box.label(text="Base Scale (Length)", icon='SHADING_BBOX')
-            cage_box.prop(scene, "urdf_use_generation_cage")
-            row = cage_box.row()
-            row.enabled = scene.urdf_use_generation_cage
-            row.prop(scene, "urdf_generation_cage_size")
-
-            # Selection
-            sel_box = box.box()
-            sel_box.prop(scene, "urdf_vehicle_type", text="Vehicle Model")
-            
-            gen_row = box.row()
-            op = gen_row.operator("urdf.create_part", text="Spawn Vehicle", icon='AUTOMOBILE')
-            op.category = 'VEHICLE'
-            op.type_sub = scene.urdf_vehicle_type
-            # Note: create_part uses urdf_part_type by default, but we can override or use scene prop
-            # For simplicity, we'll ensure create_part logic handles VEHICLE correctly.
-            
-            # --- Active Object Editor ---
-            obj = context.active_object
-            if obj and hasattr(obj, "urdf_mech_props") and obj.urdf_mech_props.category == 'VEHICLE':
+        # 2. Setup Cage for Scaled Spawning
+        cage_box = box.box()
+        cage_box.prop(scene, "urdf_use_generation_cage", text="Enable Size Cage")
+        if scene.urdf_use_generation_cage:
+            cage_box.prop(scene, "urdf_generation_cage_size", text="Vehicle Length (L)")
+        
+        # 3. Preset Selection
+        sel_box = box.box()
+        sel_box.label(text="Choose Template", icon='RESTRICT_SELECT_OFF')
+        sel_box.prop(scene, "urdf_vehicle_type", text="Type")
+        
+        gen_row = sel_box.row(align=True)
+        gen_row.scale_y = 1.2
+        # Use a more stable icon for spawning
+        op = gen_row.operator("urdf.create_part", text="Spawn Vehicle", icon='PLAY')
+        op.category = 'VEHICLE'
+        op.type_sub = scene.urdf_vehicle_type
+        
+        # 4. Property Editing for Active Vehicle Part
+        obj = context.active_object
+        if obj and hasattr(obj, "urdf_mech_props"):
+            props = obj.urdf_mech_props
+            if props.is_part and props.category == 'VEHICLE':
                 box.separator()
                 edit_box = box.box()
-                props = obj.urdf_mech_props
+                edit_box.label(text=f"Editing {obj.name}", icon='WRENCH')
                 
-                edit_box.label(text=f"Editing {props.type_vehicle.title()}", icon='OUTLINER_OB_MESH')
+                # Safe type name extraction
+                raw_type = str(props.type_vehicle)
+                type_name = raw_type.replace('_', ' ').title()
+                edit_box.label(text=f"Preset: {type_name}", icon='OUTLINER_OB_MESH')
                 
-                col = edit_box.column(align=True)
-                col.prop(props, "vehicle_length")
-                col.prop(props, "vehicle_width")
-                col.prop(props, "vehicle_height")
+                edit_col = edit_box.column(align=True)
+                edit_col.prop(props, "vehicle_length", text="Length")
+                edit_col.prop(props, "vehicle_width", text="Width")
+                edit_col.prop(props, "vehicle_height", text="Height")
                 
                 edit_box.separator()
-                col = edit_box.column(align=True)
-                col.prop(props, "vehicle_wheel_radius")
-                col.prop(props, "vehicle_wheel_width")
-                col.prop(props, "vehicle_wheelbase")
-                col.prop(props, "vehicle_track_width")
+                edit_col = edit_box.column(align=True)
+                edit_col.prop(props, "vehicle_wheel_radius", text="Wheel Radius")
+                edit_col.prop(props, "vehicle_wheel_width", text="Wheel Width")
+                edit_col.prop(props, "vehicle_wheelbase", text="Wheelbase")
+                edit_col.prop(props, "vehicle_track_width", text="Track Width")
                 
-                # Bake Button
                 edit_box.separator()
-                row = edit_box.row()
-                row.operator("urdf.bake_mesh", text="Bake Vehicle Mesh", icon='CHECKMARK')
+                edit_box.operator("urdf.bake_mesh", text="Bake to Static Vehicle", icon='CHECKBOX_HLT')
 
 def register():
     pass

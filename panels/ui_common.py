@@ -31,7 +31,6 @@ from ..config import *
 from .. import core
 from .. import properties
 from .. import operators
-from typing import Tuple
 
 def draw_panel_header(layout: bpy.types.UILayout, context: bpy.types.Context, title: str, show_prop: str, enabled_prop: str) -> Tuple[bpy.types.UILayout, bool]:
     """
@@ -187,6 +186,8 @@ class URDF_OT_MovePanel(bpy.types.Operator):
         props = {
             "urdf_order_ai_factory": scene.urdf_order_ai_factory,
             "urdf_order_parts": scene.urdf_order_parts,
+            "urdf_order_architectural": scene.urdf_order_architectural,
+            "urdf_order_vehicle": scene.urdf_order_vehicle,
             "urdf_order_electronics": scene.urdf_order_electronics,
             "urdf_order_parametric": scene.urdf_order_parametric,
             "urdf_order_dimensions": scene.urdf_order_dimensions,
@@ -238,18 +239,20 @@ class URDF_OT_ResetPanelOrder(bpy.types.Operator):
         scene = context.scene
         scene.urdf_order_ai_factory = 0
         scene.urdf_order_parts = 1
-        scene.urdf_order_electronics = 2
-        scene.urdf_order_parametric = 3
-        scene.urdf_order_dimensions = 4
-        scene.urdf_order_materials = 5
-        scene.urdf_order_lighting = 6
-        scene.urdf_order_kinematics = 7
-        scene.urdf_order_inertial = 8
-        scene.urdf_order_collision = 9
-        scene.urdf_order_transmission = 10
-        scene.urdf_order_assets = 11
-        scene.urdf_order_export = 12
-        scene.urdf_order_preferences = 13
+        scene.urdf_order_architectural = 2
+        scene.urdf_order_vehicle = 3
+        scene.urdf_order_electronics = 4
+        scene.urdf_order_parametric = 5
+        scene.urdf_order_dimensions = 6
+        scene.urdf_order_materials = 7
+        scene.urdf_order_lighting = 8
+        scene.urdf_order_kinematics = 9
+        scene.urdf_order_inertial = 10
+        scene.urdf_order_collision = 11
+        scene.urdf_order_transmission = 12
+        scene.urdf_order_assets = 13
+        scene.urdf_order_export = 14
+        scene.urdf_order_preferences = 15
         
         # Trigger the update to apply changes immediately
         bpy.ops.urdf.update_panel_order()

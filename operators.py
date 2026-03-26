@@ -2887,24 +2887,27 @@ class URDF_OT_AddDimension(bpy.types.Operator):
             
         # B. Edit Mode Vertex Selection
         if context.mode == 'EDIT_MESH':
+            # AI Editor Note: Must ensure BMesh is sync'd and lookup tables are initialized.
             bm = bmesh.from_edit_mesh(obj.data)
-            # Use history to honor vertex click order
+            bm.verts.ensure_lookup_table()
+            
+            # Use history (preferred for order) OR selection list (fallback)
             hist = [e for e in bm.select_history if isinstance(e, bmesh.types.BMVert)]
+            verts = [v for v in bm.verts if v.select]
+            
             if len(hist) >= 2:
                 v1, v2 = hist[0], hist[-1]
-                p1 = obj.matrix_world @ v1.co
-                p2 = obj.matrix_world @ v2.co
-                generate_smart_dimension_parametric(context, p1, p2, name="Vertex", parent_a=(obj, 'VERTEX', v1.index))
-                return {'FINISHED'}
+            elif len(verts) >= 2:
+                # Use first and last in index order if no history exists (e.g., box select)
+                v1, v2 = verts[0], verts[-1]
             else:
-                # Regular selection fallback
-                verts = [v for v in bm.verts if v.select]
-                if len(verts) >= 2:
-                    v1, v2 = verts[0], verts[-1]
-                    p1 = obj.matrix_world @ v1.co
-                    p2 = obj.matrix_world @ v2.co
-                    generate_smart_dimension_parametric(context, p1, p2, name="Mesh", parent_a=(obj, 'VERTEX', v1.index))
-                    return {'FINISHED'}
+                self.report({'WARNING'}, "Select at least 2 vertices for point-to-point measurement.")
+                return {'CANCELLED'}
+                
+            p1 = obj.matrix_world @ v1.co
+            p2 = obj.matrix_world @ v2.co
+            generate_smart_dimension_parametric(context, p1, p2, name="Vertex_to_Vertex", parent_a=(obj, 'VERTEX', v1.index))
+            return {'FINISHED'}
 
         # --- 2. FALLBACK: Bounding Box (Single Selection) ---
         if obj.type != 'MESH':

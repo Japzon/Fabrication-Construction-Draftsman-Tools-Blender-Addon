@@ -27,20 +27,19 @@ class URDF_PT_DimensionsAndMeasuring:
 
     @staticmethod
     def draw(layout: bpy.types.UILayout, context: bpy.types.Context) -> None:
+        """
+        Main drawing logic for the Dimensions toolkit.
+        """
         scene = context.scene
-        box = layout.box()
-
-        is_expanded = getattr(scene, "urdf_show_panel_dimensions", False)
-        icon = 'TRIA_DOWN' if is_expanded else 'TRIA_RIGHT'
-        row = box.row(align=True)
-        op = row.operator("urdf.toggle_panel_visibility", text="Dimensions & Measuring", emboss=False, icon=icon)
-        if op:
-            op.panel_property = "urdf_show_panel_dimensions"
-        row.prop(scene, "urdf_show_panel_dimensions", text="", emboss=False, toggle=True)
-        close_op = row.operator("urdf.disable_panel", text="", icon='X')
-        if close_op:
-            close_op.prop_name = "urdf_panel_enabled_dimensions"
-
+        
+        # 1. Standardized Header
+        box, is_expanded = ui_common.draw_panel_header(
+            layout, context, 
+            "Dimensions & Measuring", 
+            "urdf_show_panel_dimensions", 
+            "urdf_panel_enabled_dimensions"
+        )
+        
         if not is_expanded:
             return
 
