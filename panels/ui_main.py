@@ -20,13 +20,13 @@ from .. import properties
 from .. import operators
 from . import ui_common
 from .ui_ai_factory import URDF_PT_Generate
-from .ui_parts import URDF_PT_CreateMechanicalParts
+from .ui_parts import URDF_PT_MechanicalPresets
 from .ui_materials import URDF_PT_MaterialsAndTextures
 from .ui_lighting import URDF_PT_LightingAndAtmosphere
 from . import ui_electronics
-from .ui_electronics import URDF_PT_CreateElectronicComponents
+from .ui_electronics import URDF_PT_ElectronicPresets
 from .ui_dimensions import URDF_PT_DimensionsAndMeasuring
-from .ui_parametric import URDF_PT_ParametricTools
+from .ui_parametric import URDF_PT_ParametricToolkit
 from .ui_inertial import URDF_PT_PhysicsInertial
 from .ui_collision import URDF_PT_PhysicsCollision
 from .ui_transmission import URDF_PT_Transmission
@@ -51,9 +51,9 @@ class URDF_PT_FabricationConstructionDraftsmanToolsAutomated(bpy.types.Panel):
         # Define the mapping of panels to their order properties
         panel_map = [
             (URDF_PT_Generate, "urdf_order_ai_factory"),
-            (URDF_PT_CreateMechanicalParts, "urdf_order_parts"),
-            (URDF_PT_CreateElectronicComponents, "urdf_order_electronics"),
-            (URDF_PT_ParametricTools, "urdf_order_parametric"),
+            (URDF_PT_MechanicalPresets, "urdf_order_parts"),
+            (URDF_PT_ElectronicPresets, "urdf_order_electronics"),
+            (URDF_PT_ParametricToolkit, "urdf_order_parametric"),
             (URDF_PT_DimensionsAndMeasuring, "urdf_order_dimensions"),
             (URDF_PT_MaterialsAndTextures, "urdf_order_materials"),
             (URDF_PT_LightingAndAtmosphere, "urdf_order_lighting"),

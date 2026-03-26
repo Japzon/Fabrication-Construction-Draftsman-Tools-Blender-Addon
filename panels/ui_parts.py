@@ -20,10 +20,10 @@ from .. import properties
 from .. import operators
 from . import ui_common
 
-class URDF_PT_CreateMechanicalParts:
+class URDF_PT_MechanicalPresets:
     """
     AI Editor Note:
-    This class is a drawing helper for the 'Create Mechanical Parts' panel. It is not a
+    This class is a drawing helper for the 'Mechanical Presets' panel. It is not a
     registered bpy.types.Panel, but is called by the main URDF_PT_FabricationConstructionDraftsmanToolsAutomated
     to draw its content. This structure allows for dynamic reordering of panels.
     """
@@ -90,7 +90,7 @@ class URDF_PT_CreateMechanicalParts:
         is_expanded = scene.urdf_show_panel_parts
         icon = 'TRIA_DOWN' if is_expanded else 'TRIA_RIGHT'
         row = box.row(align=True)
-        op = row.operator("urdf.toggle_panel_visibility", text="Create Mechanical Parts", emboss=False, icon=icon)
+        op = row.operator("urdf.toggle_panel_visibility", text="Mechanical Presets", emboss=False, icon=icon)
         op.panel_property = "urdf_show_panel_parts"
         row.prop(scene, "urdf_show_panel_parts", text="", emboss=False, toggle=True)
         close_op = row.operator("urdf.disable_panel", text="", icon='X')
@@ -451,11 +451,11 @@ class URDF_PT_CreateMechanicalParts:
 # ------------------------------------------------------------------------
 
 def register():
-    for cls in [URDF_PT_CreateMechanicalParts]:
+    for cls in [URDF_PT_MechanicalPresets]:
         if hasattr(cls, 'bl_rna'):
             bpy.utils.register_class(cls)
 
 def unregister():
-    for cls in reversed([URDF_PT_CreateMechanicalParts]):
+    for cls in reversed([URDF_PT_MechanicalPresets]):
         if hasattr(cls, 'bl_rna'):
             bpy.utils.unregister_class(cls)

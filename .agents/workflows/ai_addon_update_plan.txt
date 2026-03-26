@@ -22,7 +22,7 @@ The codebase explicitly avoids generic variable reuse, such as sharing a single 
 
 Property Variables in properties.py. Variable names must exactly match the literal label shown to the user in the frontend GUI. Do NOT be resource efficient and reuse properties across distinct mechanical categories. For example, instead of a generic radius variable, you must explicitly use gear_radius, rack_width, wheel_base_radius, or motor_radius depending on the object.
 
-GUI Classes in panels user interface files. Panel class names must perfectly mirror their string display tag. For example, a panel with the text Create Mechanical Parts dictates that the underlying Python class title must be URDF_PT_CreateMechanicalParts.
+GUI Classes in panels user interface files. Panel class names must perfectly mirror their string display tag. For example, a panel with the text Mechanical Presets dictates that the underlying Python class title must be URDF_PT_MechanicalPresets.
 
 Operators in operators.py. Action classes and bl_idname identicality trace the GUI. For example, a button showing Generate Robot with AI dictates that the operator class must be URDF_OT_GenerateRobotWithAI and its bl_idname must be urdf.generate_robot_with_ai.
 

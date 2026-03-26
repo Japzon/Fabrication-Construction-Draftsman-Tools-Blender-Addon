@@ -81,10 +81,10 @@ class URDF_PT_Preferences:
             names = {
                 "urdf_order_ai_factory": "Generate",
                 "urdf_order_assets": "Asset Library",
-                "urdf_order_parts": "Create Mechanical Parts",
-                "urdf_order_electronics": "Create Electronic Components",
+                "urdf_order_parts": "Mechanical Presets",
+                "urdf_order_electronics": "Electronic Presets",
                 "urdf_order_dimensions": "Dimensions & Measuring",
-                "urdf_order_parametric": "Parametric Tools",
+                "urdf_order_parametric": "Parametric Toolkit",
                 "urdf_order_kinematics": "Kinematics Setup",
                 "urdf_order_inertial": "Inertial",
                 "urdf_order_collision": "Collision",
