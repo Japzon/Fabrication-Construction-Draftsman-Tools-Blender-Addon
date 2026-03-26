@@ -12,6 +12,8 @@ Establish a robust framework for procedural generation and UI management. All up
 - **Update Guards**: Always check `_prop_update_guard` in update callbacks to prevent recursion.
 - **Depsgraph Awareness**: Use `evaluated_get(depsgraph)` for all mesh-bound calculations to account for real-time modifiers/GN.
 - **BMesh Merging**: Procedural mesh generation must always finish with `bmesh.ops.remove_doubles` with a `WELD_THRESHOLD` to ensure stable Booleans.
+- **Syntax & Indentation**: Ensure all `if/elif` blocks contain a valid indented statement (use `pass` if the block is empty).
+- **Property Injection**: When adding new properties to `URDF_MechProps`, ensure they are placed within the class body and NOT inside a function.
 
 ## Workflows
 

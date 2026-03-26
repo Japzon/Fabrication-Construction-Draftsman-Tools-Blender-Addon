@@ -507,14 +507,6 @@ def generate_electronics_mesh(bm: bmesh.types.BMesh, props: 'URDF_MechProps', ob
         l = props.pcb_length * s; w = props.pcb_width * s; t = props.pcb_thickness * s
         bmesh.ops.create_cube(bm, size=1.0, matrix=mathutils.Matrix.Scale(l, 4, (1,0,0)) @ mathutils.Matrix.Scale(w, 4, (0,1,0)) @ mathutils.Matrix.Scale(t, 4, (0,0,1)))
         if props.pcb_hole_radius > 0:
-
-    # 11. ARCHITECTURAL
-    wall_thickness: bpy.props.FloatProperty(name="Wall Thickness", default=0.2, min=0.01, unit='LENGTH', update=wrapper_regenerate)
-    window_frame_thickness: bpy.props.FloatProperty(name="Frame Thickness", default=0.05, min=0.005, unit='LENGTH', update=wrapper_regenerate)
-    glass_thickness: bpy.props.FloatProperty(name="Glass Thickness", default=0.01, min=0.001, unit='LENGTH', update=wrapper_regenerate)
-    step_count: bpy.props.IntProperty(name="Step Count", default=10, min=1, update=wrapper_regenerate)
-    step_height: bpy.props.FloatProperty(name="Step Height", default=0.18, min=0.01, unit='LENGTH', update=wrapper_regenerate)
-    step_depth: bpy.props.FloatProperty(name="Step Depth", default=0.28, min=0.01, unit='LENGTH', update=wrapper_regenerate)
             _create_pcb_standoffs(bm, l, w, t, props.pcb_hole_radius * s)
 
     elif 'IC' in props.type_electronics:
@@ -836,7 +828,6 @@ def generate_basic_joint_mesh(bm: bmesh.types.BMesh, props: 'URDF_MechProps', ob
     # Ensure a separate object exists for the pin, matching the XML structure.
     pin_obj = props.joint_pin_obj
     if props.type_basic_joint == 'JOINT_REVOLUTE' and not pin_obj:
-    type_architectural: bpy.props.EnumProperty(name="Type", items=ARCHITECTURAL_TYPES, update=wrapper_regenerate, description="The specific type of architectural element to generate")
         mesh_name = f"{obj.name}_Pin_Mesh"
         obj_name = f"{obj.name}_Pin"
         pin_mesh = bpy.data.meshes.new(mesh_name)
@@ -1695,6 +1686,7 @@ class URDF_MechProps(bpy.types.PropertyGroup):
     type_wheel: bpy.props.EnumProperty(name="Type", items=WHEEL_TYPES, update=wrapper_regenerate, description="The specific type of wheel to generate")
     type_basic_joint: bpy.props.EnumProperty(name="Type", items=BASIC_JOINT_TYPES, update=wrapper_regenerate, description="The specific type of basic joint to generate")
     type_electronics: bpy.props.EnumProperty(name="Type", items=ALL_ELECTRONICS_TYPES, update=wrapper_regenerate, description="The specific type of electronic component")
+    type_architectural: bpy.props.EnumProperty(name="Type", items=ARCHITECTURAL_TYPES, update=wrapper_regenerate, description="The specific type of architectural element to generate")
     
     # --- GEOMETRY PROPERTIES (Literal Naming) ---
     # These properties match the GUI labels and are specific to each mechanical category.
@@ -1798,6 +1790,14 @@ class URDF_MechProps(bpy.types.PropertyGroup):
     ic_width: bpy.props.FloatProperty(name="IC Width", default=0.01, min=0.001, unit='LENGTH', update=wrapper_regenerate)
     ic_height: bpy.props.FloatProperty(name="IC Height", default=0.005, min=0.001, unit='LENGTH', update=wrapper_regenerate)
     ic_pin_count: bpy.props.IntProperty(name="Pin Count", default=8, min=2, step=2, update=wrapper_regenerate)
+
+    # 11. ARCHITECTURAL
+    wall_thickness: bpy.props.FloatProperty(name="Wall Thickness", default=0.2, min=0.01, unit='LENGTH', update=wrapper_regenerate)
+    window_frame_thickness: bpy.props.FloatProperty(name="Frame Thickness", default=0.05, min=0.005, unit='LENGTH', update=wrapper_regenerate)
+    glass_thickness: bpy.props.FloatProperty(name="Glass Thickness", default=0.01, min=0.001, unit='LENGTH', update=wrapper_regenerate)
+    step_count: bpy.props.IntProperty(name="Step Count", default=10, min=1, update=wrapper_regenerate)
+    step_height: bpy.props.FloatProperty(name="Step Height", default=0.18, min=0.01, unit='LENGTH', update=wrapper_regenerate)
+    step_depth: bpy.props.FloatProperty(name="Step Depth", default=0.28, min=0.01, unit='LENGTH', update=wrapper_regenerate)
 
     # 11. BASIC SHAPES
     shape_size: bpy.props.FloatProperty(name="Size", default=0.1, min=0.001, unit='LENGTH', update=wrapper_regenerate)
