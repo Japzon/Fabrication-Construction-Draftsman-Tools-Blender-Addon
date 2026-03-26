@@ -2,7 +2,7 @@
 
 ![Header Image](https://raw.githubusercontent.com/Greenlex Systems Services Incorporated/Fabrication-Construction-Draftsman-Tools-Automated/main/header.png)
 
-A comprehensive toolkit for native, non-destructive URDF creation and rigging for ROS/Gazebo directly within Blender.
+A comprehensive draftsman toolkit.
 
 ---
 
