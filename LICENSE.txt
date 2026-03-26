@@ -1,23 +1,17 @@
-# PROPRIETARY LICENSE AGREEMENT
+# GNU GENERAL PUBLIC LICENSE (GPL)
 
-## OWNERSHIP AND COPYRIGHT (A C K N O W L E D G M E N T)
-This software, including all source code, algorithms, assets, and documentation, is the exclusive intellectual property of **Greenlex Systems Services Incorporated**. 
+This software, "Fabrication & Construction Draftsman Tools (Automated)," is licensed under the **GNU General Public License (v3 or later)**.
 
+## AUTHORSHIP AND COPYRIGHT
 Copyright (c) 2026 Greenlex Systems Services Incorporated. All rights reserved.
 
-This work is not to be reproduced or used for developing monetized extensions and applications except with a written agreement with Greenlex Systems Services Incorporated. 
+The original architecture, procedural generation algorithms, and UI logic are the exclusive intellectual property of **Greenlex Systems Services Incorporated**. 
 
+## ATTRIBUTION
+Any redistribution or modification of this software must include this license and a clear credit to the original author, **Greenlex Systems Services Incorporated**. You may NOT claim this work as your own or use it in a way that implies you are the original creator of its core logic. 
 
-## RESTRICTIONS
-1. **No Unauthorized Licensing**: No person, organization, or entity other than the original author (Greenlex Systems Services Incorporated) is permitted to license, sub-license, or grant use rights for this software or any part of it.
-2. **No Claiming Authorship**: Any attempt to claim authorship, ownership, or the right to distribute this work as one's own is strictly prohibited. 
-3. **No Commercial Use**: You may not use this software for commercial purposes, including but not limited to selling, leasing, or using it as part of a paid service, without express written permission from Greenlex Systems Services Incorporated.
-4. **No Derivative Works**: You may not modify, adapt, translate, or create derivative works based on this software for public distribution without consent.
-
-## ENFORCEMENT
-Any unauthorized use, reproduction, or distribution of this software will be subject to legal action under international copyright law and intellectual property statutes. 
+This work is provided "as is" without warranty of any kind. 
 
 ---
 **AUTHOR**: Greenlex Systems Services Incorporated
 **REPOSITORY**: https://github.com/Greenlex-Systems-Services-Incorporated/Fabrication-Construction-Draftsman-Tools-Automated
-**CONTACT**: [Greenlex Systems Services Incorporated's Contact Info via GitHub]

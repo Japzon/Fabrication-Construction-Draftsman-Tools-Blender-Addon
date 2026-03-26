@@ -1,10 +1,14 @@
 # --------------------------------------------------------------------------------
 # Copyright (c) 2026 Greenlex Systems Services Incorporated. All rights reserved.
 #
-# A C K N O W L E D G M E N T
-# This work is not to be reproduced or used for developing monetized extensions 
-# and applications except with a written agreement with Greenlex Systems Services Incorporated.
+# A C K N O W L E D G M E N T (GPL COMPLIANT)
+# This add-on is protected under the GNU General Public License (GPL) to ensure 
+# fair use and free distribution. The original architecture, source code, and 
+# design logic are the intellectual property of Greenlex Systems Services Incorporated. 
+#
+# No party is authorized to claim authorship or ownership of this original work.
 # --------------------------------------------------------------------------------
+
 
 
 from . import ui_common

@@ -6,13 +6,13 @@ A comprehensive draftsman toolkit.
 
 ---
 
-# ⚖️ LEGAL PROTECTION & LICENSE (A C K N O W L E D G M E N T)
+# ⚖️ LEGAL PROTECTION & LICENSE (GPL COMPLIANT)
 Copyright (c) 2026 Greenlex Systems Services Incorporated. All rights reserved.
 
-This work is not to be reproduced or used for developing monetized extensions and applications except with a written agreement with **Greenlex Systems Services Incorporated**.
+This software is licensed under the **GNU General Public License (GPL)**. The original source code and design logic remain the intellectual property of **Greenlex Systems Services Incorporated**. 
 
-
-## Ownership
+No person or entity is authorized to claim this work as their own. Proper attribution is required for any redistributed or derivative versions of this toolkit.
+# Ownership
 This software, including all source code, logic, algorithms, UI designs, and documentation, is the exclusive intellectual property of **Greenlex Systems Services Incorporated**. 
 
 ### No Unauthorized Use
