@@ -1,13 +1,13 @@
 bl_info = {
-    "name": "Auto Robot & CNC Dev Kit",
+    "name": "Fabrication & Construction Draftsman Tools (Automated)",
     "author": "Gemini",
     "version": (7, 45, 0),
-    "blender": (4, 5, 5),
-    "location": "View3D > Sidebar > Robot_Dev",
+    "blender": (4, 5, 6),
+    "location": "View3D > Sidebar > Draftsman Tools",
     "description": "A comprehensive toolkit for native, non-destructive URDF creation and rigging for ROS/Gazebo.",
     "category": "Import-Export",
-    "doc_url": "https://github.com/Japzon/Robot-System-Simulation_Generator-AI",
-    "tracker_url": "https://github.com/Japzon/Robot-System-Simulation_Generator-AI/issues",
+    "doc_url": "https://github.com/Japzon/Fabrication-Construction-Draftsman-Tools-Automated.git",
+    "tracker_url": "https://github.com/Japzon/Fabrication-Construction-Draftsman-Tools-Automated/issues",
 }
 
 import bpy

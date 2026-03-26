@@ -35,16 +35,16 @@ from .ui_assets import URDF_PT_AssetLibrarySystem
 from .ui_export import URDF_PT_ImportExportSystem
 from .ui_preferences import URDF_PT_Preferences
 
-class URDF_PT_AutoRobotAndCNCDevKit(bpy.types.Panel):
+class URDF_PT_FabricationConstructionDraftsmanToolsAutomated(bpy.types.Panel):
     """
     The Master Panel that acts as a container for all other panels.
     It dynamically draws the sub-panels in the order defined by the user.
     """
-    bl_label = "Auto Robot & CNC Dev Kit"
+    bl_label = "Fabrication & Construction Draftsman Tools (Automated)"
     bl_idname = "VIEW3D_PT_urdf_main"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = 'Robot_Dev'
+    bl_category = 'Draftsman Tools'
     bl_order = 0
     
     def draw(self, context):
@@ -94,11 +94,11 @@ class URDF_PT_AutoRobotAndCNCDevKit(bpy.types.Panel):
 
 
 def register():
-    for cls in [URDF_PT_AutoRobotAndCNCDevKit]:
+    for cls in [URDF_PT_FabricationConstructionDraftsmanToolsAutomated]:
         if hasattr(cls, 'bl_rna'):
             bpy.utils.register_class(cls)
 
 def unregister():
-    for cls in reversed([URDF_PT_AutoRobotAndCNCDevKit]):
+    for cls in reversed([URDF_PT_FabricationConstructionDraftsmanToolsAutomated]):
         if hasattr(cls, 'bl_rna'):
             bpy.utils.unregister_class(cls)

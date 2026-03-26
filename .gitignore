@@ -18,4 +18,4 @@ Thumbs.db
 # Add-on specifics
 # Track the installable zip but ignore nested build artifacts and old/extraneous zips.
 *.zip
-!Automated-Robot-CNC-Developer-Kit_v*.zip
+!Fabrication-Construction-Draftsman-Tools-Automated_v*.zip

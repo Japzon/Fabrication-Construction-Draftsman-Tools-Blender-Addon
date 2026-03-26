@@ -1,9 +1,10 @@
 ---
-description: How to completely and robustly update or create features and functions for the Auto Robot and CNC Dev Kit Addon
+description: How to completely and robustly update or create features and functions for the Fabrication & Construction Draftsman Tools (Automated) Addon
 ---
-Auto Robot and CNC Dev Kit AI Agent Update Workflow
+Fabrication & Construction Draftsman Tools (Automated) AI Agent Update Workflow
 
-This workflow is the absolute source of truth for AI agents interacting with this repository. Follow these steps meticulously to robustly update or create new features, preserving the addon's unique framework and preventing major errors across future updates.
+This workflow is the absolute source of truth for AI agents interacting with this repository: https://github.com/Japzon/Fabrication-Construction-Draftsman-Tools-Automated.git
+Follow these steps meticulously to robustly update or create new features, preserving the addon's unique framework and preventing major errors across future updates.
 
 1. Strict Operational Protocols
 

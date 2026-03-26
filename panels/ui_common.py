@@ -29,7 +29,7 @@ class URDF_OT_UpdatePanelOrder(bpy.types.Operator):
 
     def execute(self, context):
         # Force redraw of all 3D View UI regions to ensure the change is visible immediately
-        # The actual sorting is now handled dynamically by URDF_PT_AutoRobotAndCNCDevKit
+        # The actual sorting is now handled dynamically by URDF_PT_FabricationConstructionDraftsmanToolsAutomated
         for window in context.window_manager.windows:
             for area in window.screen.areas:
                 if area.type == 'VIEW_3D' or area.type == 'PREFERENCES':

@@ -1,7 +1,7 @@
 import sys
 import os
 
-path = r'c:\Users\japzo\OneDrive\Desktop\Blender Add-on Workshop\Robot-System-Simulation_Generator-AI\core.py'
+path = r'c:\Users\japzo\OneDrive\Desktop\Blender Add-on Workshop\Fabrication-Construction-Draftsman-Tools-Automated\core.py'
 with open(path, 'r') as f:
     content = f.read()
 

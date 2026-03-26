@@ -1,4 +1,4 @@
-﻿import bpy
+import bpy
 import bmesh
 import math
 import mathutils
@@ -24,7 +24,7 @@ class URDF_PT_PhysicsCollision:
     """
     AI Editor Note:
     This class is a drawing helper for the 'Physics: Collision' panel. It is not a
-    registered bpy.types.Panel, but is called by the main URDF_PT_AutoRobotAndCNCDevKit
+    registered bpy.types.Panel, but is called by the main URDF_PT_FabricationConstructionDraftsmanToolsAutomated
     to draw its content. This structure allows for dynamic reordering of panels.
     """
 

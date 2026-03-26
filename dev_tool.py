@@ -8,7 +8,7 @@ from datetime import datetime
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from zip_addon import zip_addon
 
-ADDON_NAME = "auto_robot_cnc_dev_kit"
+ADDON_NAME = "fabrication_construction_draftsman_tools_automated"
 OLD_ADDON_NAME = "automated_robot_cnc_dev_kit"
 BLENDER_DEFAULT_PATH = r"C:\Program Files\Blender Foundation\Blender 4.5\blender.exe"
 
@@ -188,7 +188,7 @@ def sync_git():
         print("[INFO] Repository not found. Initializing Git...")
         subprocess.run(["git", "init"], check=True)
         # We use the specific repository provided by the user
-        repo_url = "https://github.com/Japzon/Robot-System-Simulation_Generator-AI.git"
+        repo_url = "https://github.com/Japzon/Fabrication-Construction-Draftsman-Tools-Automated.git"
         print(f"[INFO] Adding remote origin: {repo_url}")
         subprocess.run(["git", "remote", "add", "origin", repo_url], check=True)
         
