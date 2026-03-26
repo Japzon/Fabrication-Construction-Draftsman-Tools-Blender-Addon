@@ -29,28 +29,27 @@ Unauthorized use or distribution will be met with immediate legal action. We mon
 
 ## 🚀 Key Features
 
-This toolkit provides a centralized interface for the entire robot design and fabrication workflow.
+A professional workstation for procedural design, mechanical engineering, and robotics integration.
+
+### 🏛️ Unified Spawning Hub
+*   **Generate Hub**: The central interface for component creation. Generate complex parts via AI-driven prompts or high-fidelity procedural templates for structural and mechanical tasks.
+*   **Global Scaling (Size Cage)**: Logic-driven spawning system ensuring all generated parts adhere to your project's maximum dimensional constraints (Length, Width, Height) automatically.
 
 ### 🏗️ Procedural Presets
-*   **Mechanical Presets**: Generate precision gears (spur, helical, worm), racks, fasteners, timing belts, roller chains, and specialized robotic wheels (Mecanum, Omni, Off-road).
-*   **Architectural Presets**: Rapidly construct structural elements including parametric walls, window frames, doors, support columns, and stairs with metric accuracy.
-*   **Vehicle Templates**: Instantly spawn realistically-scaled vehicle bases for cars, transport trucks, quadcopter drones, forklifts, and heavy tanks.
-*   **Electronic Presets**: A comprehensive library of hobby and industrial electronics including DC/Stepper motors, Lidar/IMU sensors, PCBs, and integrated circuits.
+*   **Architectural Presets**: A robust, fully-remade system for constructing parametric walls, framed windows with glass, structural doors, support columns, and complex stairs with metric-accurate riser/tread control.
+*   **Mechanical Presets**: Precision-engineered motors, sensors, gears (spur, helical, worm), gear racks, fasteners, timing belts, roller chains, and specialized robotic wheels (Mecanum, Omni).
+*   **Vehicle Templates**: Template-based generation of realistically-scaled bases for cars, trucks, drones, tanks, and industrial forklifts.
+*   **Electronic Presets**: Integrated library of hobby and industrial electronics including DC Motors, Stepper Motors (NEMA), IMU sensors, and PCBs.
 
-### 🛠️ Parametric & Design Tools
-*   **Parametric Toolkit**: Access advanced modeling utilities for non-destructive Booleans, linear/radial patterns, and rigid arrays following complex paths.
-*   **Dimensions & Measuring**: Automated holographic labels for real-time distance and radius measurement during the design phase.
-*   **Materials & Lighting**: Simplified UI for rapid assignment of industrial material presets and environmental atmosphere setup.
+### 🛠️ Advanced Toolsets
+*   **Dimensions & Measuring**: Automated holographic labels for real-time measurement, including precise vertex-to-vertex tracking in Edit Mode for engineering alignment.
+*   **Parametric Toolkit**: Non-destructive modeling utilities for Booleans, linear/radial patterns, and rigid arrays following complex paths.
+*   **Materials & Textures**: Simplified layer-based system for rapid assignment of industrial material presets and environment setup.
 
 ### 🤖 Robotics & Simulation Suite (URDF-Ready)
-*   **Kinematic Suite**: Professional-grade rigging tools to establish robot joints (revolute, prismatic, continuous), align axes, and setup IK chains.
-*   **Physics Configuration**: Dedicated panels for managing Inertial properties (Center of Mass, Tensors), Collision hulls, and Link transmission ratios.
-*   **Import/Export System**: Seamless export of complex assemblies to standardized formats (URDF, etc.) with automated hierarchy cleanup.
-
-### 📂 Workflow & AI Automation
-*   **AI Factory**: Spawning logic that utilizes a "Generation Cage" to ensure all parts fit precisely within your design constraints.
-*   **Asset Library System**: Efficient management for organizing robot components and mechanical assemblies into reusable project libraries.
-*   **Unified Preferences**: A dynamic UI management system allowing you to reorder panels and toggle module visibility for a customized workspace.
+*   **Kinematic Suite**: Professional rigging tools to establish robot joints (revolute, prismatic, continuous), align axes, and setup automated IK chains.
+*   **Physics Configuration**: Integrated management for Inertial properties (Center of Mass, Tensors), Collision hulls, and Link transmission ratios.
+*   **Asset Library System**: One-click management to organize and deploy robot components into reusable libraries for large-scale assembly.
 
 ## 🛠 Installation
 1.  Download the latest release zip.
