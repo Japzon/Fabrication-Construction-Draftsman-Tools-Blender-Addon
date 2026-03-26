@@ -1299,6 +1299,69 @@ def generate_architectural_mesh(bm: bmesh.types.BMesh, props: 'URDF_MechProps', 
             mat = mathutils.Matrix.Translation((0, i * sd + sd/2, i * sh + sh/2)) @ mathutils.Matrix.Diagonal((sw, sd, sh, 1.0))
             bmesh.ops.create_cube(bm, size=1.0, matrix=mat)
 
+def generate_vehicle_mesh(bm: bmesh.types.BMesh, props: 'URDF_MechProps', obj: bpy.types.Object) -> None:
+    """Generates procedural vehicle geometry into the provided BMesh."""
+    bm.clear()
+    u = bpy.context.scene.unit_settings.scale_length
+    s = 1.0 / u if u > 0 else 1.0
+    
+    t = props.type_vehicle
+    l = props.vehicle_length * s
+    w = props.vehicle_width * s
+    h = props.vehicle_height * s
+    wr = props.vehicle_wheel_radius * s
+    ww = props.vehicle_wheel_width * s
+    wb = props.vehicle_wheelbase * s
+    tw = props.vehicle_track_width * s
+    
+    if t == 'DRONE':
+        # Hub
+        bmesh.ops.create_cube(bm, size=1.0, matrix=mathutils.Matrix.Translation((0,0,h/2)) @ mathutils.Matrix.Diagonal((l*0.3, w*0.3, h, 1.0)))
+        # Arms (4)
+        arm_rad = h * 0.2
+        for angle in [45, 135, 225, 315]:
+            rad_angle = math.radians(angle)
+            # Offset arm from center
+            arm_mat = mathutils.Matrix.Rotation(rad_angle, 4, 'Z') @ mathutils.Matrix.Translation((l*0.4, 0, h/2)) @ mathutils.Matrix.Rotation(math.radians(90), 4, 'Y')
+            bmesh.ops.create_cone(bm, cap_ends=True, radius1=arm_rad, radius2=arm_rad, depth=l*0.8, segments=12, matrix=arm_mat)
+            # Motor/Rotor at end
+            rx = math.cos(rad_angle) * l * 0.8; ry = math.sin(rad_angle) * w * 0.8
+            rotor_pos = mathutils.Vector((rx, ry, h))
+            bmesh.ops.create_cone(bm, cap_ends=True, radius1=wr, radius2=wr, depth=h*0.5, segments=16, matrix=mathutils.Matrix.Translation(rotor_pos))
+        return
+
+    # Basic Body for others
+    body_h = h - wr # Leave room for wheels
+    if t == 'TANK':
+        # Low, wide body
+        bmesh.ops.create_cube(bm, size=1.0, matrix=mathutils.Matrix.Translation((0,0,h/2)) @ mathutils.Matrix.Diagonal((l, w, h*0.6, 1.0)))
+        # Turret
+        bmesh.ops.create_cube(bm, size=1.0, matrix=mathutils.Matrix.Translation((l*0.1, 0, h*0.8)) @ mathutils.Matrix.Diagonal((l*0.4, w*0.6, h*0.4, 1.0)))
+        # Barrel
+        bmesh.ops.create_cone(bm, cap_ends=True, radius1=h*0.05, radius2=h*0.03, depth=l*0.6, segments=16, matrix=mathutils.Matrix.Translation((l*0.6, 0, h*0.8)) @ mathutils.Matrix.Rotation(math.radians(90), 4, 'Y'))
+    else:
+        # Standard blocky body
+        bmesh.ops.create_cube(bm, size=1.0, matrix=mathutils.Matrix.Translation((0,0,wr + body_h/2)) @ mathutils.Matrix.Diagonal((l, w, body_h, 1.0)))
+        if t == 'CAR':
+            # Cab/Roof
+            bmesh.ops.create_cube(bm, size=1.0, matrix=mathutils.Matrix.Translation((-l*0.1, 0, wr + body_h + body_h*0.3)) @ mathutils.Matrix.Diagonal((l*0.5, w*0.8, body_h*0.6, 1.0)))
+        elif t == 'TRUCK':
+             # Cab
+            bmesh.ops.create_cube(bm, size=1.0, matrix=mathutils.Matrix.Translation((l*0.35, 0, wr + body_h + body_h*0.3)) @ mathutils.Matrix.Diagonal((l*0.3, w, body_h*0.6, 1.0)))
+            # Bed/Box
+            bmesh.ops.create_cube(bm, size=1.0, matrix=mathutils.Matrix.Translation((-l*0.15, 0, wr + body_h + body_h*0.6)) @ mathutils.Matrix.Diagonal((l*0.7, w, body_h*1.2, 1.0)))
+
+    # Wheels (Standard 4-wheel layout for non-drone/tank)
+    if t != 'TANK':
+        for x in [wb/2, -wb/2]:
+            for y in [tw/2, -tw/2]:
+                wheel_mat = mathutils.Matrix.Translation((x, y, wr)) @ mathutils.Matrix.Rotation(math.radians(90), 4, 'X')
+                bmesh.ops.create_cone(bm, cap_ends=True, radius1=wr, radius2=wr, depth=ww, segments=24, matrix=wheel_mat)
+    else:
+        # Tank Tracks logic (simplified as side blocks)
+        for y in [w/2 - ww/2, -w/2 + ww/2]:
+            bmesh.ops.create_cube(bm, size=1.0, matrix=mathutils.Matrix.Translation((0, y, wr)) @ mathutils.Matrix.Diagonal((l*1.1, ww, wr*2, 1.0)))
+
 def regenerate_mech_mesh(obj: bpy.types.Object, context: bpy.types.Context, mech_props: Optional['URDF_MechProps'] = None) -> None:
     """
     The central function for generating and updating the mesh of a parametric part.
@@ -1363,6 +1426,8 @@ def regenerate_mech_mesh(obj: bpy.types.Object, context: bpy.types.Context, mech
         generate_basic_shape_mesh(bm, props, target_obj)
     elif props.category == 'ARCHITECTURAL':
         generate_architectural_mesh(bm, props, target_obj)
+    elif props.category == 'VEHICLE':
+        generate_vehicle_mesh(bm, props, target_obj)
     elif props.category == 'ROPE':
         generate_rope_mesh(bm, props)
 
@@ -1687,6 +1752,7 @@ class URDF_MechProps(bpy.types.PropertyGroup):
     type_basic_joint: bpy.props.EnumProperty(name="Type", items=BASIC_JOINT_TYPES, update=wrapper_regenerate, description="The specific type of basic joint to generate")
     type_electronics: bpy.props.EnumProperty(name="Type", items=ALL_ELECTRONICS_TYPES, update=wrapper_regenerate, description="The specific type of electronic component")
     type_architectural: bpy.props.EnumProperty(name="Type", items=ARCHITECTURAL_TYPES, update=wrapper_regenerate, description="The specific type of architectural element to generate")
+    type_vehicle: bpy.props.EnumProperty(name="Type", items=VEHICLE_TYPES, update=wrapper_regenerate, description="The specific type of vehicle to generate")
     
     # --- GEOMETRY PROPERTIES (Literal Naming) ---
     # These properties match the GUI labels and are specific to each mechanical category.
@@ -1798,6 +1864,15 @@ class URDF_MechProps(bpy.types.PropertyGroup):
     step_count: bpy.props.IntProperty(name="Step Count", default=10, min=1, update=wrapper_regenerate)
     step_height: bpy.props.FloatProperty(name="Step Height", default=0.18, min=0.01, unit='LENGTH', update=wrapper_regenerate)
     step_depth: bpy.props.FloatProperty(name="Step Depth", default=0.28, min=0.01, unit='LENGTH', update=wrapper_regenerate)
+
+    # 12. VEHICLES
+    vehicle_length: bpy.props.FloatProperty(name="Vehicle Length", default=4.5, min=0.1, unit='LENGTH', update=wrapper_regenerate)
+    vehicle_width: bpy.props.FloatProperty(name="Vehicle Width", default=1.8, min=0.1, unit='LENGTH', update=wrapper_regenerate)
+    vehicle_height: bpy.props.FloatProperty(name="Vehicle Height", default=1.4, min=0.1, unit='LENGTH', update=wrapper_regenerate)
+    vehicle_wheel_radius: bpy.props.FloatProperty(name="Wheel Radius", default=0.3, min=0.01, unit='LENGTH', update=wrapper_regenerate)
+    vehicle_wheel_width: bpy.props.FloatProperty(name="Wheel Width", default=0.2, min=0.01, unit='LENGTH', update=wrapper_regenerate)
+    vehicle_wheelbase: bpy.props.FloatProperty(name="Wheelbase", default=2.7, min=0.1, unit='LENGTH', update=wrapper_regenerate)
+    vehicle_track_width: bpy.props.FloatProperty(name="Track Width", default=1.5, min=0.1, unit='LENGTH', update=wrapper_regenerate)
 
     # 11. BASIC SHAPES
     shape_size: bpy.props.FloatProperty(name="Size", default=0.1, min=0.001, unit='LENGTH', update=wrapper_regenerate)
@@ -2296,22 +2371,23 @@ def register():
     bpy.types.Scene.urdf_asset_props = bpy.props.PointerProperty(type=URDF_AssetProperties)
     bpy.types.Scene.urdf_active_rig = bpy.props.PointerProperty(type=bpy.types.Object)
     
-    # Scene Panel Order
+    # Scene Panel Order & Persistence
     bpy.types.Scene.urdf_order_ai_factory = bpy.props.IntProperty(default=0)
-    bpy.types.Scene.urdf_order_assets = bpy.props.IntProperty(default=1)
-    bpy.types.Scene.urdf_order_parts = bpy.props.IntProperty(default=2)
-    bpy.types.Scene.urdf_order_electronics = bpy.props.IntProperty(default=3)
-    bpy.types.Scene.urdf_order_dimensions = bpy.props.IntProperty(default=4)
+    bpy.types.Scene.urdf_order_parts = bpy.props.IntProperty(default=1)
+    bpy.types.Scene.urdf_order_architectural = bpy.props.IntProperty(default=2)
+    bpy.types.Scene.urdf_order_vehicle = bpy.props.IntProperty(default=3)
+    bpy.types.Scene.urdf_order_electronics = bpy.props.IntProperty(default=4)
     bpy.types.Scene.urdf_order_parametric = bpy.props.IntProperty(default=5)
-    bpy.types.Scene.urdf_order_kinematics = bpy.props.IntProperty(default=6)
-    bpy.types.Scene.urdf_order_inertial = bpy.props.IntProperty(default=7)
-    bpy.types.Scene.urdf_order_collision = bpy.props.IntProperty(default=8)
-    bpy.types.Scene.urdf_order_transmission = bpy.props.IntProperty(default=9)
-    bpy.types.Scene.urdf_order_materials = bpy.props.IntProperty(default=10)
-    bpy.types.Scene.urdf_order_lighting = bpy.props.IntProperty(default=11)
-    bpy.types.Scene.urdf_order_export = bpy.props.IntProperty(default=12)
-    bpy.types.Scene.urdf_order_architectural = bpy.props.IntProperty(default=13)
-    bpy.types.Scene.urdf_order_preferences = bpy.props.IntProperty(default=14)
+    bpy.types.Scene.urdf_order_dimensions = bpy.props.IntProperty(default=6)
+    bpy.types.Scene.urdf_order_materials = bpy.props.IntProperty(default=7)
+    bpy.types.Scene.urdf_order_lighting = bpy.props.IntProperty(default=8)
+    bpy.types.Scene.urdf_order_kinematics = bpy.props.IntProperty(default=9)
+    bpy.types.Scene.urdf_order_inertial = bpy.props.IntProperty(default=10)
+    bpy.types.Scene.urdf_order_collision = bpy.props.IntProperty(default=11)
+    bpy.types.Scene.urdf_order_transmission = bpy.props.IntProperty(default=12)
+    bpy.types.Scene.urdf_order_assets = bpy.props.IntProperty(default=13)
+    bpy.types.Scene.urdf_order_export = bpy.props.IntProperty(default=14)
+    bpy.types.Scene.urdf_order_preferences = bpy.props.IntProperty(default=15)
 
     # Scene Panel Enabled (Persistence)
     bpy.types.Scene.urdf_panel_enabled_ai_factory = bpy.props.BoolProperty(default=True)
@@ -2328,6 +2404,7 @@ def register():
     bpy.types.Scene.urdf_panel_enabled_export = bpy.props.BoolProperty(default=True)
     bpy.types.Scene.urdf_panel_enabled_assets = bpy.props.BoolProperty(default=False)
     bpy.types.Scene.urdf_panel_enabled_architectural = bpy.props.BoolProperty(default=True)
+    bpy.types.Scene.urdf_panel_enabled_vehicle = bpy.props.BoolProperty(default=True)
 
     # Scene Panel Show (Fold State)
     bpy.types.Scene.urdf_show_panel_ai_factory = bpy.props.BoolProperty(default=True)
@@ -2344,6 +2421,7 @@ def register():
     bpy.types.Scene.urdf_show_panel_preferences = bpy.props.BoolProperty(default=True)
     bpy.types.Scene.urdf_show_panel_assets = bpy.props.BoolProperty(default=False)
     bpy.types.Scene.urdf_show_panel_architectural = bpy.props.BoolProperty(default=True)
+    bpy.types.Scene.urdf_show_panel_vehicle = bpy.props.BoolProperty(default=True)
     bpy.types.Scene.urdf_show_panel_lighting = bpy.props.BoolProperty(default=False)
 
     # Global UI Settings
@@ -2361,6 +2439,8 @@ def register():
     bpy.types.Scene.urdf_part_type = bpy.props.EnumProperty(items=core.get_mech_types_callback)
     bpy.types.Scene.urdf_electronics_category = bpy.props.EnumProperty(items=ELECTRONICS_CATEGORIES, default='MOTOR', update=core.update_electronics_category_enum)
     bpy.types.Scene.urdf_electronics_type = bpy.props.EnumProperty(items=core.get_electronics_types_callback)
+    bpy.types.Scene.urdf_vehicle_type = bpy.props.EnumProperty(items=VEHICLE_TYPES, default='CAR')
+    bpy.types.Scene.urdf_architectural_type = bpy.props.EnumProperty(items=ARCHITECTURAL_TYPES, default='WALL')
     
     # Kinematics Properties
     bpy.types.Scene.urdf_cursor_local_pos = bpy.props.FloatVectorProperty(name="Local Pos", subtype='TRANSLATION', size=3, update=core.update_local_cursor_from_tool)

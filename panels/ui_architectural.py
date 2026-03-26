@@ -25,30 +25,22 @@ class URDF_PT_ArchitecturalPresets:
         scene = context.scene
         
         # --- Header Section ---
-        header_box = layout.box()
-        row = header_box.row(align=True)
-        row.label(text="Architectural Presets", icon='HOME')
+        box, is_expanded = ui_common.draw_panel_header(layout, context, "Architectural Presets", "urdf_show_panel_architectural", "urdf_panel_enabled_architectural")
         
-        # Toggle for panel visibility
-        ui_common.draw_panel_toggle(row, scene, "urdf_show_panel_architectural")
-        
-        if not scene.urdf_show_panel_architectural:
+        if not is_expanded:
             return
 
         # --- Selection Section ---
         sel_box = layout.box()
         sel_box.label(text="Select Element", icon='RESTRICT_SELECT_OFF')
-        sel_box.prop(scene, "urdf_part_category", text="Category")
+        sel_box.prop(scene, "urdf_architectural_type", text="Structural Type")
         
-        # Only show types if the category is ARCHITECTURAL
-        if scene.urdf_part_category == 'ARCHITECTURAL':
-            sel_box.prop(scene, "urdf_part_type", text="Type")
-            
-            # --- Generation Trigger ---
-            gen_row = sel_box.row(align=True)
-            gen_row.scale_y = 1.2
-            op = gen_row.operator("urdf.create_part", text="Generate Preset", icon='PLUS')
-            # The operator uses the scene properties to decide what to create
+        # --- Generation Trigger ---
+        gen_row = sel_box.row(align=True)
+        gen_row.scale_y = 1.2
+        op = gen_row.operator("urdf.create_part", text="Generate Preset", icon='PLUS')
+        op.category = 'ARCHITECTURAL'
+        op.type_sub = scene.urdf_architectural_type
         
         # --- Property Editing Section (Active Object) ---
         obj = context.active_object

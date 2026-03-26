@@ -41,6 +41,7 @@ from .ui_electronics import URDF_PT_ElectronicPresets
 from .ui_dimensions import URDF_PT_DimensionsAndMeasuring
 from .ui_parametric import URDF_PT_ParametricToolkit
 from .ui_architectural import URDF_PT_ArchitecturalPresets
+from .ui_vehicle import URDF_PT_VehiclePresets
 from .ui_inertial import URDF_PT_PhysicsInertial
 from .ui_collision import URDF_PT_PhysicsCollision
 from .ui_transmission import URDF_PT_Transmission
@@ -66,6 +67,8 @@ class URDF_PT_FabricationConstructionDraftsmanToolsAutomated(bpy.types.Panel):
         panel_map = [
             (URDF_PT_Generate, "urdf_order_ai_factory"),
             (URDF_PT_MechanicalPresets, "urdf_order_parts"),
+            (URDF_PT_ArchitecturalPresets, "urdf_order_architectural"),
+            (URDF_PT_VehiclePresets, "urdf_order_vehicle"),
             (URDF_PT_ElectronicPresets, "urdf_order_electronics"),
             (URDF_PT_ParametricToolkit, "urdf_order_parametric"),
             (URDF_PT_DimensionsAndMeasuring, "urdf_order_dimensions"),
@@ -110,7 +113,10 @@ class URDF_PT_FabricationConstructionDraftsmanToolsAutomated(bpy.types.Panel):
 def register():
     for cls in [URDF_PT_FabricationConstructionDraftsmanToolsAutomated]:
         if hasattr(cls, 'bl_rna'):
-            bpy.utils.register_class(cls)
+            try:
+                bpy.utils.register_class(cls)
+            except Exception:
+                pass
 
 def unregister():
     for cls in reversed([URDF_PT_FabricationConstructionDraftsmanToolsAutomated]):

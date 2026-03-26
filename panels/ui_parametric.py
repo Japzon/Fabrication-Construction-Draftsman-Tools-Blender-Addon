@@ -49,20 +49,8 @@ class URDF_PT_ParametricToolkit:
     @staticmethod
     def draw(layout: bpy.types.UILayout, context: bpy.types.Context) -> None:
         scene = context.scene
-        box = layout.box()
-        
-        # AI Editor Note: The panel header now uses a dedicated operator to toggle
-        # its expanded state. This prevents unintended expansions on hover,
-        # ensuring the update logic (like auto-collapse) only runs on explicit clicks.
-        # The `prop` is still used for the visual toggle icon.
-        is_expanded = scene.urdf_show_panel_parametric
-        icon = 'TRIA_DOWN' if is_expanded else 'TRIA_RIGHT'
-        row = box.row(align=True)
-        op = row.operator("urdf.toggle_panel_visibility", text="Parametric Toolkit", emboss=False, icon=icon)
-        op.panel_property = "urdf_show_panel_parametric"
-        row.prop(scene, "urdf_show_panel_parametric", text="", emboss=False, toggle=True)
-        close_op = row.operator("urdf.disable_panel", text="", icon='X')
-        close_op.prop_name = "urdf_panel_enabled_parametric"
+        # --- Header ---
+        box, is_expanded = ui_common.draw_panel_header(layout, context, "Parametric Toolkit", "urdf_show_panel_parametric", "urdf_panel_enabled_parametric")
 
 
         if is_expanded:

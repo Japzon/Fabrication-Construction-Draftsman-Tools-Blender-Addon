@@ -48,16 +48,8 @@ class URDF_PT_ElectronicPresets:
     @staticmethod
     def draw(layout: bpy.types.UILayout, context: bpy.types.Context) -> None:
         scene = context.scene
-        box = layout.box()
-        
-        is_expanded = scene.urdf_show_panel_electronics
-        icon = 'TRIA_DOWN' if is_expanded else 'TRIA_RIGHT'
-        row = box.row(align=True)
-        op = row.operator("urdf.toggle_panel_visibility", text="Electronic Presets", emboss=False, icon=icon)
-        op.panel_property = "urdf_show_panel_electronics"
-        row.prop(scene, "urdf_show_panel_electronics", text="", emboss=False, toggle=True)
-        close_op = row.operator("urdf.disable_panel", text="", icon='X')
-        close_op.prop_name = "urdf_panel_enabled_electronics"
+        # --- Header ---
+        box, is_expanded = ui_common.draw_panel_header(layout, context, "Electronic Presets", "urdf_show_panel_electronics", "urdf_panel_enabled_electronics")
 
 
         if is_expanded:

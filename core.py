@@ -3021,14 +3021,40 @@ def create_parametric_part_object(context: bpy.types.Context, category: str, typ
         'GEAR': 'type_gear', 'RACK': 'type_rack', 'FASTENER': 'type_fastener',
         'SPRING': 'type_spring', 'CHAIN': 'type_chain', 'WHEEL': 'type_wheel',
         'PULLEY': 'type_pulley', 'ROPE': 'type_rope', 'BASIC_JOINT': 'type_basic_joint', 'BASIC_SHAPE': 'type_basic_shape',
-        'ELECTRONICS': 'type_electronics'
+        'ELECTRONICS': 'type_electronics',
+        'ARCHITECTURAL': 'type_architectural',
+        'VEHICLE': 'type_vehicle'
     }
     if category in type_prop_map:
         setattr(props, type_prop_map[category], type_sub)
 
     # --- 3. Apply Defaults & Scaling ---
     # Apply realistic defaults first, then scale
-    if category == 'FASTENER':
+    if category == 'ARCHITECTURAL':
+        # Default Architectural: Scale relative to actual base size (Length 5.0m)
+        multiplier = scale_factor / 5.0 
+        props.length = 5.0 * multiplier; props.height = 2.5 * multiplier
+        if type_sub == 'COLUMN': props.radius = 0.2 * multiplier
+    elif category == 'VEHICLE':
+        # Realistic scale mapping (units in meters) proportional to scale_factor (Length)
+        l = scale_factor
+        if type_sub == 'CAR':
+            props.vehicle_length = l; props.vehicle_width = l * 0.4; props.vehicle_height = l * 0.31
+            props.vehicle_wheel_radius = props.vehicle_height * 0.25; props.vehicle_wheel_width = props.vehicle_width * 0.15
+            props.vehicle_wheelbase = l * 0.6; props.vehicle_track_width = props.vehicle_width * 0.8
+        elif type_sub == 'TRUCK':
+            props.vehicle_length = l; props.vehicle_width = l * 0.4; props.vehicle_height = l * 0.51
+            props.vehicle_wheel_radius = props.vehicle_height * 0.15; props.vehicle_wheel_width = props.vehicle_width * 0.12
+            props.vehicle_wheelbase = l * 0.7; props.vehicle_track_width = props.vehicle_width * 0.85
+        elif type_sub == 'DRONE':
+            props.vehicle_length = l; props.vehicle_width = l; props.vehicle_height = l * 0.33
+            props.vehicle_wheel_radius = l * 0.25; props.vehicle_wheel_width = l * 0.05
+        elif type_sub == 'TANK':
+            props.vehicle_length = l; props.vehicle_width = l * 0.39; props.vehicle_height = l * 0.28
+            props.vehicle_wheel_radius = props.vehicle_height * 0.4; props.vehicle_wheel_width = props.vehicle_width * 0.25
+        elif type_sub == 'FORKLIFT':
+            props.vehicle_length = l; props.vehicle_width = l * 0.34; props.vehicle_height = l * 0.71
+    elif category == 'FASTENER':
         # AI Editor Note: Scale relative to actual base size (0.02m) to maximize cage.
         # Default Fastener: Length 0.02, Radius 0.003. Max dim is 0.02.
         multiplier = scale_factor / 0.02
@@ -5342,10 +5368,11 @@ _last_active_bone_name = None
 
 def register():
     for cls in [URDF_OT_Core_DisablePanel, URDF_OT_Core_TogglePanelVisibility, URDF_OT_Core_SnapCursorToActive]:
-        try:
-            bpy.utils.register_class(cls)
-        except Exception:
-            pass
+        if hasattr(cls, 'bl_rna'):
+            try:
+                bpy.utils.register_class(cls)
+            except Exception:
+                pass
     if sync_light_props_handler not in bpy.app.handlers.depsgraph_update_post: bpy.app.handlers.depsgraph_update_post.append(sync_light_props_handler)
     if urdf_placement_handler not in bpy.app.handlers.depsgraph_update_post: bpy.app.handlers.depsgraph_update_post.append(urdf_placement_handler)
     if auto_set_active_rig_handler not in bpy.app.handlers.load_post: bpy.app.handlers.load_post.append(auto_set_active_rig_handler)

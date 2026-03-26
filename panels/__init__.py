@@ -19,6 +19,7 @@ from . import ui_lighting
 from . import ui_electronics
 from . import ui_dimensions
 from . import ui_architectural
+from . import ui_vehicle
 from . import ui_parametric
 from . import ui_inertial
 from . import ui_collision
@@ -38,6 +39,7 @@ modules = [
     ui_electronics,
     ui_dimensions,
     ui_architectural,
+    ui_vehicle,
     ui_parametric,
     ui_inertial,
     ui_collision,

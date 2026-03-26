@@ -3396,16 +3396,11 @@ class OPS_OT_CreatePart(bpy.types.Operator):
     bl_idname = "urdf.create_part"
     bl_label = "Generate"
     bl_options = {'REGISTER', 'UNDO'}
-    def execute(self, context: bpy.types.Context) -> Set[str]:
-        # --- AI Editor Note: Generation Logic ---
-        # This operator follows a clear pattern for each part category:
-        # 1. Calculate a scale factor based on the optional "Generation Size Cage".
-        # 2. Create the necessary Blender object(s) (Mesh, Curve, Empties).
-        # 3. Assign the addon's parametric properties (`URDF_MechProps`).
-        # 4. Apply the scale factor to the default parametric values (e.g., radius, length).
-        # 5. For complex parts (Spring, Chain), update helper objects and native properties.
-        # 6. Call the appropriate generation/setup function (`regenerate_mech_mesh`, `setup_native_spring`, etc.).
+    
+    category: bpy.props.StringProperty(default="")
+    type_sub: bpy.props.StringProperty(default="")
 
+    def execute(self, context: bpy.types.Context) -> Set[str]:
         # --- 1. Get Scaling Factor from Generation Cage ---
         scale_factor = 0.1 # Default base dimension (10cm) if cage is unused
         use_cage = context.scene.urdf_use_generation_cage
@@ -3416,8 +3411,16 @@ class OPS_OT_CreatePart(bpy.types.Operator):
             self.report({'INFO'}, f"Generating part with Default Size: {scale_factor:.3f}m")
 
         cursor_loc = context.scene.cursor.location
-        cat = context.scene.urdf_part_category
-        type_sub = context.scene.urdf_part_type
+        cat = self.category if self.category else context.scene.urdf_part_category
+        type_sub = self.type_sub if self.type_sub else context.scene.urdf_part_type
+        
+        # Override with scene-specific properties if available
+        if cat == 'ELECTRONICS' and not self.type_sub:
+            type_sub = context.scene.urdf_electronics_type
+        elif cat == 'VEHICLE' and not self.type_sub:
+            type_sub = context.scene.urdf_vehicle_type
+        elif cat == 'ARCHITECTURAL' and not self.type_sub:
+            type_sub = context.scene.urdf_architectural_type
         
         # --- AI Editor Note: Use the new centralized helper function ---
         new_obj = create_parametric_part_object(context, cat, type_sub, cursor_loc, scale_factor)
@@ -5943,10 +5946,11 @@ def register():
         OPS_OT_EnterPoseMode, OPS_OT_EnterObjectMode, OPS_OT_AddBone, URDF_OT_ApplyRestPose
     ]
     for cls in CLASSES:
-        try:
-            bpy.utils.register_class(cls)
-        except Exception:
-            pass
+        if hasattr(cls, 'bl_rna'):
+            try:
+                bpy.utils.register_class(cls)
+            except Exception:
+                pass
 
 def unregister():
     CLASSES = [

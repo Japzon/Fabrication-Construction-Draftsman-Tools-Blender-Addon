@@ -31,7 +31,31 @@ from ..config import *
 from .. import core
 from .. import properties
 from .. import operators
-from . import ui_common
+from typing import Tuple
+
+def draw_panel_header(layout: bpy.types.UILayout, context: bpy.types.Context, title: str, show_prop: str, enabled_prop: str) -> Tuple[bpy.types.UILayout, bool]:
+    """
+    Draws a standardized triad toggle and close button for a panel header.
+    Returns the box layout and the expanded state.
+    """
+    box = layout.box()
+    row = box.row(align=True)
+    scene = context.scene
+    
+    is_expanded = getattr(scene, show_prop, False)
+    icon = 'TRIA_DOWN' if is_expanded else 'TRIA_RIGHT'
+    
+    # Toggle button for expansion
+    op = row.operator("urdf.toggle_panel_visibility", text=title, icon=icon, emboss=False)
+    op.panel_property = show_prop
+    row.prop(scene, show_prop, text="", emboss=False, toggle=True)
+    
+    # Close button to disable panel entirely
+    close_op = row.operator("urdf.disable_panel", text="", icon='X')
+    close_op.prop_name = enabled_prop
+    
+    return box, is_expanded
+
 
 class URDF_OT_UpdatePanelOrder(bpy.types.Operator):
     """Updates the order of panels in the UI based on the settings in Preferences"""
@@ -254,7 +278,10 @@ class UI_UL_WrapItems(bpy.types.UIList):
 def register():
     for cls in [URDF_OT_UpdatePanelOrder, URDF_OT_ToggleTextPlacement, URDF_OT_MovePanel, URDF_OT_ResetPanelOrder, UI_UL_WrapItems]:
         if hasattr(cls, 'bl_rna'):
-            bpy.utils.register_class(cls)
+            try:
+                bpy.utils.register_class(cls)
+            except Exception:
+                pass
 
 def unregister():
     for cls in reversed([URDF_OT_UpdatePanelOrder, URDF_OT_ToggleTextPlacement, URDF_OT_MovePanel, URDF_OT_ResetPanelOrder, UI_UL_WrapItems]):

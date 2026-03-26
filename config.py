@@ -62,6 +62,7 @@ URDF_PANEL_PROPS: List[str] = [
     "urdf_show_panel_export",
     "urdf_show_panel_assets",
     "urdf_show_panel_architectural",
+    "urdf_show_panel_vehicle",
 ]
 
 # --- Mechanical Part Categories and Types ---
@@ -200,6 +201,14 @@ ARCHITECTURAL_TYPES: List[Tuple[str, str, str]] = sorted([
     ('STAIRS', "Stairs", "A set of structural stairs.")
 ], key=itemgetter(1))
 
+VEHICLE_TYPES: List[Tuple[str, str, str]] = sorted([
+    ('CAR', "Car", "A standard passenger car."),
+    ('TRUCK', "Truck", "A standard transport truck."),
+    ('DRONE', "Drone (Quadcopter)", "A standard quadcopter drone."),
+    ('TANK', "Tank", "A tracked heavy vehicle."),
+    ('FORKLIFT', "Forklift", "A standard warehouse forklift.")
+], key=itemgetter(1))
+
 # --- Visual Gizmo Styles ---
 GIZMO_STYLES: List[Tuple[str, str, str]] = [
     ('DEFAULT', "Default (Flat)", "Standard flat 2D gizmos"),
@@ -229,6 +238,7 @@ MECH_CATEGORIES_RAW = [
     ('BASIC_JOINT', "Basic Joints", "Generate kinematic joint templates"),
     ('BASIC_SHAPE', "Basic Shapes", "Generate parametric primitive shapes"),
     ('ARCHITECTURAL', "Architectural", "Generate architectural elements"),
+    ('VEHICLE', "Vehicle", "Generate vehicle templates"),
 ]
 MECH_CATEGORIES_SORTED = sorted(MECH_CATEGORIES_RAW, key=itemgetter(1))
 ALL_CATEGORIES_SORTED = sorted(MECH_CATEGORIES_RAW + [('ELECTRONICS', "Electronics", "Generate electronic components")], key=itemgetter(1))

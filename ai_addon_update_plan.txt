@@ -14,6 +14,8 @@ Establish a robust framework for procedural generation and UI management. All up
 - **BMesh Merging**: Procedural mesh generation must always finish with `bmesh.ops.remove_doubles` with a `WELD_THRESHOLD` to ensure stable Booleans.
 - **Syntax & Indentation**: Ensure all `if/elif` blocks contain a valid indented statement (use `pass` if the block is empty).
 - **Property Injection**: When adding new properties to `URDF_MechProps`, ensure they are placed within the class body and NOT inside a function.
+- **Registration Safety**: Use try/except blocks when calling `bpy.utils.register_class` for operators that might be shared across modules, or centralize them in `operators.py`.
+- **Import Hygiene**: Avoid circular imports or self-imports (e.g., `from . import ui_common` inside `ui_common.py`).
 
 ## Workflows
 
