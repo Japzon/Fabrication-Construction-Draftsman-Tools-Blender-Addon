@@ -1,18 +1,22 @@
 # --------------------------------------------------------------------------------
-# Copyright (c) 2026 Japzon. All rights reserved.
-# PROPRIETARY LICENSE. NOT AUTHORIZED FOR PUBLIC DISTRIBUTION WITHOUT CONSENT.
+# Copyright (c) 2026 Greenlex Systems Services Incorporated. All rights reserved.
+#
+# A C K N O W L E D G M E N T
+# This work is not to be reproduced or used for developing monetized extensions 
+# and applications except with a written agreement with Greenlex Systems Services Incorporated.
 # --------------------------------------------------------------------------------
+
 
 bl_info = {
     "name": "Fabrication & Construction Draftsman Tools (Automated)",
-    "author": "Japzon",
+    "author": "Greenlex Systems Services Incorporated",
     "version": (7, 45, 0),
     "blender": (4, 5, 6),
     "location": "View3D > Sidebar > Draftsman Tools",
     "description": "A comprehensive toolkit for native, non-destructive URDF creation and rigging for ROS/Gazebo.",
     "category": "Import-Export",
-    "doc_url": "https://github.com/Japzon/Fabrication-Construction-Draftsman-Tools-Automated.git",
-    "tracker_url": "https://github.com/Japzon/Fabrication-Construction-Draftsman-Tools-Automated/issues",
+    "doc_url": "https://github.com/Greenlex-Systems-Services-Incorporated/Fabrication-Construction-Draftsman-Tools-Automated.git",
+    "tracker_url": "https://github.com/Greenlex-Systems-Services-Incorporated/Fabrication-Construction-Draftsman-Tools-Automated/issues",
 }
 
 import bpy

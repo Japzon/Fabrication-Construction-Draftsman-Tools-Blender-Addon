@@ -1,20 +1,23 @@
 # PROPRIETARY LICENSE AGREEMENT
 
-## OWNERSHIP AND COPYRIGHT
-This software, "Fabrication & Construction Draftsman Tools (Automated)," including all source code, algorithms, assets, and documentation, is the exclusive intellectual property of **Japzon**. 
+## OWNERSHIP AND COPYRIGHT (A C K N O W L E D G M E N T)
+This software, including all source code, algorithms, assets, and documentation, is the exclusive intellectual property of **Greenlex Systems Services Incorporated**. 
 
-Copyright (c) 2026 Japzon. All rights reserved.
+Copyright (c) 2026 Greenlex Systems Services Incorporated. All rights reserved.
+
+This work is not to be reproduced or used for developing monetized extensions and applications except with a written agreement with Greenlex Systems Services Incorporated. 
+
 
 ## RESTRICTIONS
-1. **No Unauthorized Licensing**: No person, organization, or entity other than the original author (Japzon) is permitted to license, sub-license, or grant use rights for this software or any part of it.
+1. **No Unauthorized Licensing**: No person, organization, or entity other than the original author (Greenlex Systems Services Incorporated) is permitted to license, sub-license, or grant use rights for this software or any part of it.
 2. **No Claiming Authorship**: Any attempt to claim authorship, ownership, or the right to distribute this work as one's own is strictly prohibited. 
-3. **No Commercial Use**: You may not use this software for commercial purposes, including but not limited to selling, leasing, or using it as part of a paid service, without express written permission from Japzon.
+3. **No Commercial Use**: You may not use this software for commercial purposes, including but not limited to selling, leasing, or using it as part of a paid service, without express written permission from Greenlex Systems Services Incorporated.
 4. **No Derivative Works**: You may not modify, adapt, translate, or create derivative works based on this software for public distribution without consent.
 
 ## ENFORCEMENT
 Any unauthorized use, reproduction, or distribution of this software will be subject to legal action under international copyright law and intellectual property statutes. 
 
 ---
-**AUTHOR**: Japzon
-**REPOSITORY**: https://github.com/Japzon/Fabrication-Construction-Draftsman-Tools-Automated
-**CONTACT**: [Japzon's Contact Info via GitHub]
+**AUTHOR**: Greenlex Systems Services Incorporated
+**REPOSITORY**: https://github.com/Greenlex-Systems-Services-Incorporated/Fabrication-Construction-Draftsman-Tools-Automated
+**CONTACT**: [Greenlex Systems Services Incorporated's Contact Info via GitHub]

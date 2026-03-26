@@ -1,8 +1,11 @@
 # --------------------------------------------------------------------------------
-# Copyright (c) 2026 Japzon. All rights reserved.
-# PROPRIETARY LICENSE. NOT AUTHORIZED FOR PUBLIC DISTRIBUTION WITHOUT CONSENT.
-# THIS WORK IS EXCLUSIVE PROPERTY OF JAPZON.
+# Copyright (c) 2026 Greenlex Systems Services Incorporated. All rights reserved.
+#
+# A C K N O W L E D G M E N T
+# This work is not to be reproduced or used for developing monetized extensions 
+# and applications except with a written agreement with Greenlex Systems Services Incorporated.
 # --------------------------------------------------------------------------------
+
 
 import math
 from operator import itemgetter
@@ -54,6 +57,7 @@ URDF_PANEL_PROPS: List[str] = [
     "urdf_show_panel_transmission",
     "urdf_show_panel_export",
     "urdf_show_panel_assets",
+    "urdf_show_panel_architectural",
 ]
 
 # --- Mechanical Part Categories and Types ---
@@ -183,6 +187,15 @@ BASIC_SHAPE_TYPES: List[Tuple[str, str, str]] = sorted([
     ('SHAPE_TORUS', "Torus", "A standard torus")
 ], key=itemgetter(1))
 
+ARCHITECTURAL_TYPES: List[Tuple[str, str, str]] = sorted([
+    ('WALL', "Wall", "A vertical structural wall."),
+    ('WINDOW', "Window", "A window with frame and glass."),
+    ('DOOR', "Door", "A door with frame."),
+    ('COLUMN', "Column", "A vertical support column."),
+    ('BEAM', "Beam", "A horizontal support beam."),
+    ('STAIRS', "Stairs", "A set of structural stairs.")
+], key=itemgetter(1))
+
 # --- Visual Gizmo Styles ---
 GIZMO_STYLES: List[Tuple[str, str, str]] = [
     ('DEFAULT', "Default (Flat)", "Standard flat 2D gizmos"),
@@ -211,6 +224,7 @@ MECH_CATEGORIES_RAW = [
     ('ROPE', "Ropes & Cables", "Generate ropes and cables"),
     ('BASIC_JOINT', "Basic Joints", "Generate kinematic joint templates"),
     ('BASIC_SHAPE', "Basic Shapes", "Generate parametric primitive shapes"),
+    ('ARCHITECTURAL', "Architectural", "Generate architectural elements"),
 ]
 MECH_CATEGORIES_SORTED = sorted(MECH_CATEGORIES_RAW, key=itemgetter(1))
 ALL_CATEGORIES_SORTED = sorted(MECH_CATEGORIES_RAW + [('ELECTRONICS', "Electronics", "Generate electronic components")], key=itemgetter(1))

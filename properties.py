@@ -1,8 +1,11 @@
 # --------------------------------------------------------------------------------
-# Copyright (c) 2026 Japzon. All rights reserved.
-# PROPRIETARY LICENSE. NOT AUTHORIZED FOR PUBLIC DISTRIBUTION WITHOUT CONSENT.
-# THIS WORK IS EXCLUSIVE PROPERTY OF JAPZON.
+# Copyright (c) 2026 Greenlex Systems Services Incorporated. All rights reserved.
+#
+# A C K N O W L E D G M E N T
+# This work is not to be reproduced or used for developing monetized extensions 
+# and applications except with a written agreement with Greenlex Systems Services Incorporated.
 # --------------------------------------------------------------------------------
+
 
 import bpy
 import bmesh
@@ -500,6 +503,14 @@ def generate_electronics_mesh(bm: bmesh.types.BMesh, props: 'URDF_MechProps', ob
         l = props.pcb_length * s; w = props.pcb_width * s; t = props.pcb_thickness * s
         bmesh.ops.create_cube(bm, size=1.0, matrix=mathutils.Matrix.Scale(l, 4, (1,0,0)) @ mathutils.Matrix.Scale(w, 4, (0,1,0)) @ mathutils.Matrix.Scale(t, 4, (0,0,1)))
         if props.pcb_hole_radius > 0:
+
+    # 11. ARCHITECTURAL
+    wall_thickness: bpy.props.FloatProperty(name="Wall Thickness", default=0.2, min=0.01, unit='LENGTH', update=wrapper_regenerate)
+    window_frame_thickness: bpy.props.FloatProperty(name="Frame Thickness", default=0.05, min=0.005, unit='LENGTH', update=wrapper_regenerate)
+    glass_thickness: bpy.props.FloatProperty(name="Glass Thickness", default=0.01, min=0.001, unit='LENGTH', update=wrapper_regenerate)
+    step_count: bpy.props.IntProperty(name="Step Count", default=10, min=1, update=wrapper_regenerate)
+    step_height: bpy.props.FloatProperty(name="Step Height", default=0.18, min=0.01, unit='LENGTH', update=wrapper_regenerate)
+    step_depth: bpy.props.FloatProperty(name="Step Depth", default=0.28, min=0.01, unit='LENGTH', update=wrapper_regenerate)
             _create_pcb_standoffs(bm, l, w, t, props.pcb_hole_radius * s)
 
     elif 'IC' in props.type_electronics:
@@ -821,6 +832,7 @@ def generate_basic_joint_mesh(bm: bmesh.types.BMesh, props: 'URDF_MechProps', ob
     # Ensure a separate object exists for the pin, matching the XML structure.
     pin_obj = props.joint_pin_obj
     if props.type_basic_joint == 'JOINT_REVOLUTE' and not pin_obj:
+    type_architectural: bpy.props.EnumProperty(name="Type", items=ARCHITECTURAL_TYPES, update=wrapper_regenerate, description="The specific type of architectural element to generate")
         mesh_name = f"{obj.name}_Pin_Mesh"
         obj_name = f"{obj.name}_Pin"
         pin_mesh = bpy.data.meshes.new(mesh_name)
@@ -1225,6 +1237,73 @@ def generate_basic_shape_mesh(bm: bmesh.types.BMesh, props: 'URDF_MechProps', ob
         bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0001)
         bmesh.ops.translate(bm, verts=bm.verts, vec=(0, 0, minor_r))
 
+
+def generate_architectural_mesh(bm: bmesh.types.BMesh, props: 'URDF_MechProps', obj: bpy.types.Object) -> None:
+    """Generates procedural architectural geometry into the provided BMesh."""
+    bm.clear()
+    u = bpy.context.scene.unit_settings.scale_length
+    s = 1.0 / u if u > 0 else 1.0
+    
+    t = props.type_architectural
+    if t == 'WALL':
+        length = props.length * s
+        height = props.height * s
+        thick = props.wall_thickness * s
+        # Pivot at center-bottom
+        mat = mathutils.Matrix.Translation((0, 0, height/2)) @ mathutils.Matrix.Diagonal((length, thick, height, 1.0))
+        bmesh.ops.create_cube(bm, size=1.0, matrix=mat)
+        
+    elif t == 'WINDOW':
+        w = props.length * s
+        h = props.height * s
+        f_th = props.window_frame_thickness * s
+        g_th = props.glass_thickness * s
+        
+        # Frame (4 parts)
+        # Bottom/Top
+        for z in [f_th/2, h - f_th/2]:
+            bmesh.ops.create_cube(bm, size=1.0, matrix=mathutils.Matrix.Translation((0, 0, z)) @ mathutils.Matrix.Diagonal((w, f_th, f_th, 1.0)))
+        # Left/Right
+        for x in [-w/2 + f_th/2, w/2 - f_th/2]:
+            bmesh.ops.create_cube(bm, size=1.0, matrix=mathutils.Matrix.Translation((x, 0, h/2)) @ mathutils.Matrix.Diagonal((f_th, f_th, h - 2*f_th, 1.0)))
+        # Glass
+        bmesh.ops.create_cube(bm, size=1.0, matrix=mathutils.Matrix.Translation((0, 0, h/2)) @ mathutils.Matrix.Diagonal((w - 2*f_th, g_th, h - 2*f_th, 1.0)))
+
+    elif t == 'DOOR':
+        w = props.length * s
+        h = props.height * s
+        f_th = props.window_frame_thickness * s # Reuse for door frame
+        # Just a flat slab with a frame
+        # Frame
+        for x in [-w/2 + f_th/2, w/2 - f_th/2]:
+            bmesh.ops.create_cube(bm, size=1.0, matrix=mathutils.Matrix.Translation((x, 0, h/2)) @ mathutils.Matrix.Diagonal((f_th, f_th*1.5, h, 1.0)))
+        bmesh.ops.create_cube(bm, size=1.0, matrix=mathutils.Matrix.Translation((0, 0, h - f_th/2)) @ mathutils.Matrix.Diagonal((w, f_th*1.5, f_th, 1.0)))
+        # Slab
+        bmesh.ops.create_cube(bm, size=1.0, matrix=mathutils.Matrix.Translation((0, 0, h/2)) @ mathutils.Matrix.Diagonal((w - 2.1*f_th, f_th*0.8, h - 1.1*f_th, 1.0)))
+
+    elif t == 'COLUMN':
+        r = props.radius * s
+        h = props.height * s
+        bmesh.ops.create_cone(bm, cap_ends=True, radius1=r, radius2=r, depth=h, segments=32, matrix=mathutils.Matrix.Translation((0, 0, h/2)) @ mathutils.Matrix.Rotation(math.radians(0), 4, 'X'))
+        # Rotate back to Z upright
+        for v in bm.verts:
+            v.co = mathutils.Matrix.Rotation(math.radians(90), 3, 'X') @ v.co
+
+    elif t == 'BEAM':
+        l = props.length * s
+        w = props.width * s
+        h = props.height * s
+        bmesh.ops.create_cube(bm, size=1.0, matrix=mathutils.Matrix.Translation((l/2, 0, 0)) @ mathutils.Matrix.Diagonal((l, w, h, 1.0)))
+
+    elif t == 'STAIRS':
+        count = props.step_count
+        sh = props.step_height * s
+        sd = props.step_depth * s
+        sw = props.length * s
+        for i in range(count):
+            mat = mathutils.Matrix.Translation((0, i * sd + sd/2, i * sh + sh/2)) @ mathutils.Matrix.Diagonal((sw, sd, sh, 1.0))
+            bmesh.ops.create_cube(bm, size=1.0, matrix=mat)
+
 def regenerate_mech_mesh(obj: bpy.types.Object, context: bpy.types.Context, mech_props: Optional['URDF_MechProps'] = None) -> None:
     """
     The central function for generating and updating the mesh of a parametric part.
@@ -1287,6 +1366,8 @@ def regenerate_mech_mesh(obj: bpy.types.Object, context: bpy.types.Context, mech
         generate_basic_joint_mesh(bm, props, target_obj, context)
     elif props.category == 'BASIC_SHAPE':
         generate_basic_shape_mesh(bm, props, target_obj)
+    elif props.category == 'ARCHITECTURAL':
+        generate_architectural_mesh(bm, props, target_obj)
     elif props.category == 'ROPE':
         generate_rope_mesh(bm, props)
 
@@ -1480,7 +1561,17 @@ def wrapper_regenerate(self: 'URDF_MechProps', context: bpy.types.Context) -> No
             
             u = context.scene.unit_settings.scale_length
             s = 1.0 / u if u > 0 else 1.0
+            
+            u = context.scene.unit_settings.scale_length
+            s = 1.0 / u if u > 0 else 1.0
             pbone.urdf_props.joint_radius = r * s
+            
+            # --- AI Editor Note: Immediate Gizmo Refresh ---
+            # Explicitly trigger the gizmo update handler from core.
+            # This ensures the visual cage stays in sync with real-time morphs.
+            if hasattr(core, 'update_single_bone_gizmo'):
+                core.update_single_bone_gizmo(pbone, context.scene.urdf_viz_gizmos)
+
 
 def update_radius_prop(self: 'URDF_MechProps', context: bpy.types.Context) -> None:
     """
@@ -2215,7 +2306,8 @@ def register():
     bpy.types.Scene.urdf_order_materials = bpy.props.IntProperty(default=10)
     bpy.types.Scene.urdf_order_lighting = bpy.props.IntProperty(default=11)
     bpy.types.Scene.urdf_order_export = bpy.props.IntProperty(default=12)
-    bpy.types.Scene.urdf_order_preferences = bpy.props.IntProperty(default=13)
+    bpy.types.Scene.urdf_order_architectural = bpy.props.IntProperty(default=13)
+    bpy.types.Scene.urdf_order_preferences = bpy.props.IntProperty(default=14)
 
     # Scene Panel Enabled (Persistence)
     bpy.types.Scene.urdf_panel_enabled_ai_factory = bpy.props.BoolProperty(default=True)
@@ -2231,6 +2323,7 @@ def register():
     bpy.types.Scene.urdf_panel_enabled_transmission = bpy.props.BoolProperty(default=True)
     bpy.types.Scene.urdf_panel_enabled_export = bpy.props.BoolProperty(default=True)
     bpy.types.Scene.urdf_panel_enabled_assets = bpy.props.BoolProperty(default=False)
+    bpy.types.Scene.urdf_panel_enabled_architectural = bpy.props.BoolProperty(default=True)
 
     # Scene Panel Show (Fold State)
     bpy.types.Scene.urdf_show_panel_ai_factory = bpy.props.BoolProperty(default=True)
@@ -2246,6 +2339,7 @@ def register():
     bpy.types.Scene.urdf_show_panel_export = bpy.props.BoolProperty(default=False)
     bpy.types.Scene.urdf_show_panel_preferences = bpy.props.BoolProperty(default=True)
     bpy.types.Scene.urdf_show_panel_assets = bpy.props.BoolProperty(default=False)
+    bpy.types.Scene.urdf_show_panel_architectural = bpy.props.BoolProperty(default=True)
     bpy.types.Scene.urdf_show_panel_lighting = bpy.props.BoolProperty(default=False)
 
     # Global UI Settings
@@ -2346,7 +2440,7 @@ def unregister():
             "urdf_show_panel_electronics", "urdf_show_panel_parametric", "urdf_show_panel_dimensions",
             "urdf_show_panel_materials", "urdf_show_panel_kinematics", "urdf_show_panel_inertial",
             "urdf_show_panel_collision", "urdf_show_panel_transmission", "urdf_show_panel_export",
-            "urdf_show_panel_preferences", "urdf_show_panel_assets", "urdf_show_panel_lighting",
+            "urdf_show_panel_preferences", "urdf_show_panel_assets", "urdf_show_panel_lighting", "urdf_show_panel_architectural",
             "urdf_auto_collapse_panels", "urdf_viz_gizmos", "urdf_show_bones", "urdf_use_generation_cage",
             "urdf_generation_cage_size", "urdf_gizmo_style", "urdf_part_category", "urdf_electronics_category",
             "urdf_placement_mode", "urdf_text_placement_mode", "urdf_hook_placement_mode",

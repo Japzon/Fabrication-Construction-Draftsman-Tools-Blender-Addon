@@ -1,8 +1,11 @@
 # --------------------------------------------------------------------------------
-# Copyright (c) 2026 Japzon. All rights reserved.
-# PROPRIETARY LICENSE. NOT AUTHORIZED FOR PUBLIC DISTRIBUTION WITHOUT CONSENT.
-# THIS WORK IS EXCLUSIVE PROPERTY OF JAPZON.
+# Copyright (c) 2026 Greenlex Systems Services Incorporated. All rights reserved.
+#
+# A C K N O W L E D G M E N T
+# This work is not to be reproduced or used for developing monetized extensions 
+# and applications except with a written agreement with Greenlex Systems Services Incorporated.
 # --------------------------------------------------------------------------------
+
 
 from . import ui_common
 from . import ui_ai_factory
@@ -11,6 +14,7 @@ from . import ui_materials
 from . import ui_lighting
 from . import ui_electronics
 from . import ui_dimensions
+from . import ui_architectural
 from . import ui_parametric
 from . import ui_inertial
 from . import ui_collision
@@ -29,6 +33,7 @@ modules = [
     ui_lighting,
     ui_electronics,
     ui_dimensions,
+    ui_architectural,
     ui_parametric,
     ui_inertial,
     ui_collision,

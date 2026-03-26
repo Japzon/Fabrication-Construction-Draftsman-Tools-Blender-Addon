@@ -1,8 +1,11 @@
 # --------------------------------------------------------------------------------
-# Copyright (c) 2026 Japzon. All rights reserved.
-# PROPRIETARY LICENSE. NOT AUTHORIZED FOR PUBLIC DISTRIBUTION WITHOUT CONSENT.
-# THIS WORK IS EXCLUSIVE PROPERTY OF JAPZON.
+# Copyright (c) 2026 Greenlex Systems Services Incorporated. All rights reserved.
+#
+# A C K N O W L E D G M E N T
+# This work is not to be reproduced or used for developing monetized extensions 
+# and applications except with a written agreement with Greenlex Systems Services Incorporated.
 # --------------------------------------------------------------------------------
+
 
 import bpy
 import bmesh
@@ -556,6 +559,8 @@ def update_category_enum(self: bpy.types.Scene, context: bpy.types.Context) -> N
         context.scene.urdf_part_type = 'ROPE_TUBE'
     elif cat == 'BASIC_JOINT':
         context.scene.urdf_part_type = 'JOINT_CONTINUOUS'
+    elif cat == 'ARCHITECTURAL':
+        context.scene.urdf_part_type = 'WALL'
     elif cat == 'BASIC_SHAPE':
         context.scene.urdf_part_type = 'SHAPE_CIRCLE'
 
@@ -599,6 +604,8 @@ def get_mech_types_callback(self: bpy.types.Scene, context: bpy.types.Context) -
         return ROPE_TYPES
     elif cat == 'BASIC_JOINT':
         return BASIC_JOINT_TYPES
+    elif cat == 'ARCHITECTURAL':
+        context.scene.urdf_part_type = 'WALL'
     elif cat == 'BASIC_SHAPE':
         return BASIC_SHAPE_TYPES
     return []
@@ -3135,6 +3142,18 @@ def create_parametric_part_object(context: bpy.types.Context, category: str, typ
             props.wheel_thickness = 0.01 * multiplier
             props.joint_carriage_width = 0.1 * multiplier
             props.joint_carriage_thickness = 0.015 * multiplier
+    
+    elif category == 'ARCHITECTURAL':
+        props.length = scale_factor
+        props.height = scale_factor
+        props.width = scale_factor / 5.0
+        props.radius = scale_factor / 10.0
+        props.wall_thickness = 0.2 * scale_factor
+        props.window_frame_thickness = 0.05 * scale_factor
+        props.glass_thickness = 0.01 * scale_factor
+        props.step_count = 10
+        props.step_height = scale_factor / 10.0
+        props.step_depth = scale_factor / 8.0
     elif category == 'BASIC_SHAPE':
         # Direct unit mapping for shapes
         props.radius = scale_factor / 2.0
@@ -3296,10 +3315,12 @@ def _calculate_bone_geometry(objs, axis_orient: str, reference_obj=None):
 
     # Build a combined bounding box in the reference object's local space
     all_points_local = []
+    depsgraph = bpy.context.evaluated_depsgraph_get()
     for o in objs:
+        o_eval = o.evaluated_get(depsgraph) if o.type == 'MESH' else o
         o_mat = o.matrix_world
-        if hasattr(o, 'bound_box') and o.bound_box:
-            for b in o.bound_box:
+        if hasattr(o_eval, 'bound_box') and o_eval.bound_box:
+            for b in o_eval.bound_box:
                 v_world = o_mat @ mathutils.Vector(b)
                 all_points_local.append(inv_mat @ v_world)
         else:

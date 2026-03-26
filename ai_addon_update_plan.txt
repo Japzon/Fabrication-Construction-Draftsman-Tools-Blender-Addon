@@ -1,0 +1,35 @@
+# Fabrication & Construction Draftsman Tools (Automated) - AI Update Plan
+
+## Objective
+Establish a robust framework for procedural generation and UI management. All updates must adhere to the "Native-First" philosophy (Geometry Nodes, Drivers, native modifiers) and ensure real-time visual feedback.
+
+## Strict Naming Conventions
+- **GUI Labels**: Match Blender's standard naming where possible, or use the "Literal" names defined in `config.py`.
+- **Property Names**: Use clear, category-prefixed names (e.g., `gear_radius`, `wall_thickness`).
+- **Object Prefixes**: Use `MOD_PREFIX` (URDF_), `CUTTER_PREFIX` (URDF_Cutter_), etc., to keep the scene organized and scripts robust.
+
+## Procedural Safety
+- **Update Guards**: Always check `_prop_update_guard` in update callbacks to prevent recursion.
+- **Depsgraph Awareness**: Use `evaluated_get(depsgraph)` for all mesh-bound calculations to account for real-time modifiers/GN.
+- **BMesh Merging**: Procedural mesh generation must always finish with `bmesh.ops.remove_doubles` with a `WELD_THRESHOLD` to ensure stable Booleans.
+
+## Workflows
+
+### 1. Adding a New Parametric Category
+1.  **Config**: Add category and sub-types to `config.py`.
+2.  **Properties**: Add `type_<category>` and specific geometry properties to `URDF_MechProps` in `properties.py`.
+3.  **Generators**: Implement `generate_<category>_mesh(bm, props, obj)` in `properties.py`.
+4.  **Dispatcher**: Update `regenerate_mech_mesh` and `wrapper_regenerate` in `properties.py`.
+5.  **Core**: Update `create_parametric_part_object` and Enum callbacks in `core.py`.
+6.  **UI**: Create/Update a panel in `panels/` to expose the properties.
+
+### 2. Gizmo and Joint Logic
+- Gizmos must scale proportionally with the mesh.
+- When `props.joint_radius` is updated, `core.update_single_bone_gizmo` MUST be triggered.
+- `rig_parametric_joint` is the central rigging operator and must use the fixed `_calculate_bone_geometry` (Evaluated Mesh).
+
+## Active Tasks (Session Summary)
+- [x] Create 'Architectural Presets' Panel (Walls, Windows, Doors, etc.).
+- [x] Implement BMesh generators for Architectural elements.
+- [x] Fix Joint Gizmo scaling bug by using evaluated mesh bounds.
+- [x] Ensure real-time gizmo refresh during property changes.

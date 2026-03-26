@@ -1,8 +1,11 @@
 # --------------------------------------------------------------------------------
-# Copyright (c) 2026 Japzon. All rights reserved.
-# PROPRIETARY LICENSE. NOT AUTHORIZED FOR PUBLIC DISTRIBUTION WITHOUT CONSENT.
-# THIS WORK IS EXCLUSIVE PROPERTY OF JAPZON.
+# Copyright (c) 2026 Greenlex Systems Services Incorporated. All rights reserved.
+#
+# A C K N O W L E D G M E N T
+# This work is not to be reproduced or used for developing monetized extensions 
+# and applications except with a written agreement with Greenlex Systems Services Incorporated.
 # --------------------------------------------------------------------------------
+
 
 import os
 import subprocess
@@ -194,7 +197,7 @@ def sync_git():
         print("[INFO] Repository not found. Initializing Git...")
         subprocess.run(["git", "init"], check=True)
         # We use the specific repository provided by the user
-        repo_url = "https://github.com/Japzon/Fabrication-Construction-Draftsman-Tools-Automated.git"
+        repo_url = "https://github.com/Greenlex Systems Services Incorporated/Fabrication-Construction-Draftsman-Tools-Automated.git"
         print(f"[INFO] Adding remote origin: {repo_url}")
         subprocess.run(["git", "remote", "add", "origin", repo_url], check=True)
         

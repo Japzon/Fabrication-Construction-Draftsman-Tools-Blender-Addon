@@ -1,8 +1,11 @@
 # --------------------------------------------------------------------------------
-# Copyright (c) 2026 Japzon. All rights reserved.
-# PROPRIETARY LICENSE. NOT AUTHORIZED FOR PUBLIC DISTRIBUTION WITHOUT CONSENT.
-# THIS WORK IS EXCLUSIVE PROPERTY OF JAPZON.
+# Copyright (c) 2026 Greenlex Systems Services Incorporated. All rights reserved.
+#
+# A C K N O W L E D G M E N T
+# This work is not to be reproduced or used for developing monetized extensions 
+# and applications except with a written agreement with Greenlex Systems Services Incorporated.
 # --------------------------------------------------------------------------------
+
 
 import bpy
 import bmesh
@@ -33,6 +36,7 @@ from . import ui_electronics
 from .ui_electronics import URDF_PT_ElectronicPresets
 from .ui_dimensions import URDF_PT_DimensionsAndMeasuring
 from .ui_parametric import URDF_PT_ParametricToolkit
+from .ui_architectural import URDF_PT_ArchitecturalPresets
 from .ui_inertial import URDF_PT_PhysicsInertial
 from .ui_collision import URDF_PT_PhysicsCollision
 from .ui_transmission import URDF_PT_Transmission
