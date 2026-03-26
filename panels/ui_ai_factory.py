@@ -35,85 +35,75 @@ from . import ui_common
 
 class URDF_PT_Generate:
     """
-    AI Editor Note:
-    This class is a drawing helper for the 'Generate Robot' panel. It is not a
-    registered bpy.types.Panel, but is called by the main URDF_PT_FabricationConstructionDraftsmanToolsAutomated
-    to draw its content. This structure allows for dynamic reordering of panels.
+    Drawing helper for the 'Generate' panel. This is the central hub for
+    spawning components using both AI-driven prompts and procedural templates.
     """
-    # AI Editor Note: Renamed panel to "Generate Robot" and updated order to be above Mechanical Parts.
     bl_label = "Generate"
     bl_idname = "VIEW3D_PT_urdf_ai_factory"
 
     @classmethod
     def poll(cls, context: bpy.types.Context) -> bool:
         # This panel is only drawn if its corresponding visibility toggle is enabled.
-        return context.scene.urdf_panel_enabled_ai_factory
+        return getattr(context.scene, "urdf_panel_enabled_ai_factory", True)
 
     @staticmethod
     def draw(layout: bpy.types.UILayout, context: bpy.types.Context) -> None:
+        """
+        Main drawing logic for the Generate Robot panel.
+        """
         scene = context.scene
-        box = layout.box()
         
-        # AI Editor Note: The panel header now uses a dedicated operator to toggle
-        # its expanded state. This prevents unintended expansions on hover,
-        # ensuring the update logic (like auto-collapse) only runs on explicit clicks.
-        # The `prop` is still used for the visual toggle icon.
-        is_expanded = scene.urdf_show_panel_ai_factory
-        icon = 'TRIA_DOWN' if is_expanded else 'TRIA_RIGHT'
-        row = box.row(align=True)
-        op = row.operator("urdf.toggle_panel_visibility", text="Generate", emboss=False, icon=icon)
-        op.panel_property = "urdf_show_panel_ai_factory"
-        row.prop(scene, "urdf_show_panel_ai_factory", text="", emboss=False, toggle=True)
-        close_op = row.operator("urdf.disable_panel", text="", icon='X')
-        close_op.prop_name = "urdf_panel_enabled_ai_factory"
+        # 1. Standardized Header
+        box, is_expanded = ui_common.draw_panel_header(
+            layout, context, 
+            "Generate", 
+            "urdf_show_panel_ai_factory", 
+            "urdf_panel_enabled_ai_factory"
+        )
+        
+        if not is_expanded:
+            return
 
 
         if is_expanded:
-            # AI Editor Note: Add the Generation Size Cage feature to this panel.
+            # --- Global Scale Control ---
             cage_box = box.box()
-            cage_box.label(text="Generation Size Constraint", icon='SHADING_BBOX')
-            cage_box.prop(scene, "urdf_use_generation_cage")
+            cage_box.label(text="Global Scale Constraint (Size Cage)", icon='SHADING_BBOX')
+            cage_box.prop(scene, "urdf_use_generation_cage", text="Enable Size Cage")
             row = cage_box.row()
             row.enabled = scene.urdf_use_generation_cage
-            row.prop(scene, "urdf_generation_cage_size")
+            row.prop(scene, "urdf_generation_cage_size", text="Max Dimension (L)")
             
             ai_props = scene.urdf_ai_props
             
-            # --- Templates Section ---
+            # --- Procedural Templates Section ---
             tmpl_box = box.box()
-            tmpl_box.label(text="Quick Templates (No AI)", icon='FILE_NEW')
+            tmpl_box.label(text="Structural / Mechanical Templates", icon='FILE_NEW')
             row = tmpl_box.row()
-            row.prop(ai_props, "robot_template", text="")
-            row.operator("urdf.generate_preset", text="Load Template", icon='IMPORT')
+            row.prop(ai_props, "robot_template", text="Template")
+            row.operator("urdf.generate_preset", text="Spawn Template", icon='IMPORT')
             
             box.separator()
 
-            # --- API Settings ---
+            # --- AI Generation Hub ---
             api_box = box.box()
-            api_box.label(text="API Configuration", icon='KEYINGSET')
+            api_box.label(text="AI Generator Configuration", icon='NODE_COMPOSITING')
             
-            # AI Editor Note: Added source selection dropdown.
-            api_box.prop(ai_props, "ai_source", text="Source")
+            api_box.prop(ai_props, "ai_source", text="API Source")
             
-            # Only show API key field if API source is selected.
             if ai_props.ai_source == 'API':
-                api_box.prop(ai_props, "api_key")
+                api_box.prop(ai_props, "api_key", password=True)
             
             # --- Prompt Input ---
             prompt_box = box.box()
-            prompt_box.label(text="Prompt", icon='TEXT')
-            
-            # Use a larger text box for the prompt by setting `text=""`
-            # and letting the property's name act as the label above.
-            # This is a standard Blender UI trick for multi-line text input.
+            prompt_box.label(text="AI Generation Prompt", icon='TEXT')
             prompt_box.prop(ai_props, "api_prompt", text="")
             
-            # --- Execution Button ---
+            # --- Execution ---
             box.separator()
             row = box.row()
-            # Make the button larger for emphasis
             row.scale_y = 1.5
-            row.operator("urdf.execute_ai_prompt", icon='PLAY')
+            row.operator("urdf.execute_ai_prompt", text="Generate via AI", icon='PLAY')
 
 
 # ------------------------------------------------------------------------

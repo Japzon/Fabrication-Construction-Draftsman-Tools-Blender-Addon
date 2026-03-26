@@ -48,21 +48,24 @@ class URDF_PT_Preferences:
 
     @staticmethod
     def draw(layout: bpy.types.UILayout, context: bpy.types.Context) -> None:
+        """
+        Main drawing logic for the Preferences panel.
+        """
         scene = context.scene
-        box = layout.box()
         
-        is_expanded = scene.urdf_show_panel_preferences
-        icon = 'TRIA_DOWN' if is_expanded else 'TRIA_RIGHT'
-        row = box.row(align=True)
-        op = row.operator("urdf.toggle_panel_visibility", text="Preferences", emboss=False, icon=icon)
-        op.panel_property = "urdf_show_panel_preferences"
-        row.prop(scene, "urdf_show_panel_preferences", text="", emboss=False, toggle=True)
-
+        # 1. Standardized Header
+        box, is_expanded = ui_common.draw_panel_header(
+            layout, context, 
+            "Preferences", 
+            "urdf_show_panel_preferences", 
+            "urdf_panel_enabled_preferences"
+        )
+        
+        if not is_expanded:
+            return
 
         if is_expanded:
             # --- Viewport Display Settings ---
-            # AI Editor Note: Moved from standalone panel to Preferences for better organization.
-            # This places global display toggles at the top of the preferences for quick access.
             display_box = box.box()
             display_box.label(text="Viewport Display", icon='VIEW3D')
             row = display_box.row(align=True)
@@ -70,8 +73,6 @@ class URDF_PT_Preferences:
             row.prop(scene, "urdf_show_bones", text="Show Bones")
 
             # --- Scene Units ---
-            # AI Editor Note: Added to provide quick access to unit settings for URDF scaling.
-            # Allows setting Meters, Millimeters, Feet, Inches, etc. natively.
             units_box = box.box()
             units_box.label(text="Scene Units", icon='SCENE_DATA')
             
@@ -90,11 +91,12 @@ class URDF_PT_Preferences:
             behavior_box.prop(scene, "urdf_auto_collapse_panels")
 
             # --- Panel Order & Visibility Data ---
-            # AI Editor Note: Define mappings to synchronize order and visibility lists.
             names = {
                 "urdf_order_ai_factory": "Generate",
                 "urdf_order_assets": "Asset Library",
                 "urdf_order_parts": "Mechanical Presets",
+                "urdf_order_architectural": "Architectural Presets",
+                "urdf_order_vehicle": "Vehicle Presets",
                 "urdf_order_electronics": "Electronic Presets",
                 "urdf_order_dimensions": "Dimensions & Measuring",
                 "urdf_order_parametric": "Parametric Toolkit",
@@ -108,10 +110,11 @@ class URDF_PT_Preferences:
                 "urdf_order_preferences": "Preferences",
             }
             
-            # Mapping from order property to visibility property (Preferences has no visibility toggle)
             order_to_visibility = {
                 "urdf_order_ai_factory": "urdf_panel_enabled_ai_factory",
                 "urdf_order_parts": "urdf_panel_enabled_parts",
+                "urdf_order_architectural": "urdf_panel_enabled_architectural",
+                "urdf_order_vehicle": "urdf_panel_enabled_vehicle",
                 "urdf_order_electronics": "urdf_panel_enabled_electronics",
                 "urdf_order_parametric": "urdf_panel_enabled_parametric",
                 "urdf_order_dimensions": "urdf_panel_enabled_dimensions",
@@ -133,7 +136,6 @@ class URDF_PT_Preferences:
             visibility_box.label(text="Visible Panels", icon='HIDE_OFF')
             col = visibility_box.column(align=True)
             
-            # AI Editor Note: Draw visibility toggles in the user-defined order.
             for prop_name, _ in sorted_props:
                 vis_prop = order_to_visibility.get(prop_name)
                 if vis_prop:
