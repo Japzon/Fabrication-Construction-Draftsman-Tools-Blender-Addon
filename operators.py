@@ -5956,8 +5956,58 @@ class FCD_OT_ToonifySelectedLights(bpy.types.Operator):
         return {'FINISHED'}
 
 # ------------------------------------------------------------------------
-#   OPERATOR: CAMERA CINEMATOGRAPHY
+#   OPERATORS: CAMERA CINEMATOGRAPHY
 # ------------------------------------------------------------------------
+
+class FCD_OT_CreateCamera(bpy.types.Operator):
+    """Creates a new Blueprint-ready camera based on selected preset."""
+    bl_idname = "fcd.create_camera"
+    bl_label = "Spawn Camera"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        scene = context.scene
+        preset = scene.fcd_camera_preset
+        
+        # Create camera data
+        cam_data = bpy.data.cameras.new(name="FCD_Camera")
+        
+        # Apply Preset
+        if preset == '70MM':
+            cam_data.lens = 70.0
+        elif preset == '16MM':
+            cam_data.lens = 16.0
+        elif preset == '8MM':
+            cam_data.lens = 8.0
+        else: # 35MM
+            cam_data.lens = 35.0
+            
+        # Create object
+        cam_obj = bpy.data.objects.new(name="Camera_Blueprint", object_data=cam_data)
+        context.collection.objects.link(cam_obj)
+        
+        # Position at cursor
+        cam_obj.location = scene.cursor.location
+        cam_obj.rotation_euler = (math.radians(90), 0, 0) # Level horizon
+        
+        # Select and Activate
+        for o in context.view_layer.objects.selected:
+            o.select_set(False)
+        cam_obj.select_set(True)
+        context.view_layer.objects.active = cam_obj
+        
+        # Initialize FCD properties
+        cam_obj.fcd_pg_mech_props.is_part = True
+        cam_obj.fcd_pg_mech_props.category = 'NONE' # It's a tool
+        
+        # Synchronize FCD mirror props to camera data
+        cam_obj.fcd_pg_mech_props.camera_focal_length = cam_data.lens
+        
+        # Switch to the new camera immediately
+        scene.camera = cam_obj
+        
+        self.report({'INFO'}, f"Spawned {preset} Camera at cursor.")
+        return {'FINISHED'}
 
 class FCD_OT_Camera_Setup(bpy.types.Operator):
     """Binds camera to targets and paths for high-fidelity simulation recording."""
@@ -6031,7 +6081,7 @@ class FCD_OT_Camera_Look_Through(bpy.types.Operator):
 
 def register():
     CLASSES = [
-        FCD_OT_Camera_Setup, FCD_OT_Camera_Look_Through,
+        FCD_OT_CreateCamera, FCD_OT_Camera_Setup, FCD_OT_Camera_Look_Through,
         FCD_OT_Open_Asset_Browser, FCD_OT_Register_Asset_Catalog, FCD_OT_Mark_And_Upload_Asset, FCD_OT_ImportToAssetCatalog, FCD_OT_Add_Asset_Library,
         FCD_OT_LightTarget, FCD_OT_ApplyToonShader, FCD_OT_GlobalToonSharpness, FCD_OT_ToonifySelectedLights, 
         FCD_OT_Execute_AI_Prompt, FCD_OT_SetJointType, FCD_OT_CalculateCenterOfMass, 
@@ -6061,7 +6111,7 @@ def register():
 
 def unregister():
     CLASSES = [
-        FCD_OT_Camera_Setup, FCD_OT_Camera_Look_Through,
+        FCD_OT_CreateCamera, FCD_OT_Camera_Setup, FCD_OT_Camera_Look_Through,
         FCD_OT_Open_Asset_Browser, FCD_OT_Register_Asset_Catalog, FCD_OT_Mark_And_Upload_Asset, FCD_OT_ImportToAssetCatalog, FCD_OT_Add_Asset_Library,
         FCD_OT_LightTarget, FCD_OT_ApplyToonShader, FCD_OT_GlobalToonSharpness, FCD_OT_ToonifySelectedLights, 
         FCD_OT_Execute_AI_Prompt, FCD_OT_SetJointType, FCD_OT_CalculateCenterOfMass, 

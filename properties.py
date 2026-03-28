@@ -347,8 +347,17 @@ class FCD_PG_Lighting_Props(bpy.types.PropertyGroup):
     base_color: bpy.props.FloatVectorProperty(name="Tint", subtype='COLOR', size=4, default=(1.0, 1.0, 1.0, 1.0))
 
 class FCD_PG_Asset_Props(bpy.types.PropertyGroup):
-    target_library: bpy.props.StringProperty(name="Library Path")
-    selected_catalog: bpy.props.StringProperty(name="Catalog")
+    target_library: bpy.props.StringProperty(name="Library Path", description="Select an asset library directory. Note: Internal Blender tooltips for folders may mention file-specific modifiers which are not applicable here.", subtype='DIR_PATH')
+    selected_catalog: bpy.props.StringProperty(name="Catalog", description="Name of the selected catalog within the library")
+    
+    # Path/Management properties used in sidebars/popups
+    add_library_path: bpy.props.StringProperty(name="New Library Path", description="Path for new library registration. Note: Internal Blender tooltips for folders may mention file-specific modifiers which are not applicable here.", subtype='DIR_PATH')
+    new_catalog_name: bpy.props.StringProperty(name="Catalog Name", description="Name for newly created asset catalogs")
+    
+    # Batch Import settings
+    import_source_filepath: bpy.props.StringProperty(name="Import File", description="Path to the external 3D file (GLB, OBJ, FBX) to import", subtype='FILE_PATH')
+    import_target_library: bpy.props.StringProperty(name="Target Library", description="Selected library for imported assets", subtype='DIR_PATH')
+    import_target_catalog: bpy.props.StringProperty(name="Target Catalog", description="Selected catalog for imported assets")
 
 class FCD_ExportItem(bpy.types.PropertyGroup):
     """Item for the export list"""
@@ -423,6 +432,17 @@ def register():
     bpy.types.Scene.fcd_bone_axis = bpy.props.EnumProperty(name="Axis", items=BONE_AXES, default='AUTO')
     bpy.types.Scene.fcd_cursor_local_pos = bpy.props.FloatVectorProperty(name="Local Pos", size=3, unit='LENGTH', update=update_cursor_local_wrapper)
     bpy.types.Scene.fcd_active_rig = bpy.props.PointerProperty(type=bpy.types.Object, name="Active Rig")
+    
+    bpy.types.Scene.fcd_camera_preset = bpy.props.EnumProperty(
+        name="Camera Preset",
+        items=[
+            ('35MM', "35mm Standard", "Standard full-frame lens"),
+            ('70MM', "70mm Telephoto", "Longer lens for cinematic depth"),
+            ('16MM', "16mm Ultra-Wide", "Action camera style (GoPro)"),
+            ('8MM', "8mm Security", "Wide surveillance lens"),
+        ],
+        default='35MM'
+    )
     
     # 2. Export List
     bpy.types.Scene.fcd_export_list = bpy.props.CollectionProperty(type=FCD_ExportItem)
@@ -549,7 +569,7 @@ def unregister():
             "fcd_export_mesh_format", "fcd_quick_export_format",
             "fcd_smart_material_type", "fcd_material_transparency",
             "fcd_tex_pos", "fcd_tex_rot", "fcd_tex_scale",
-            "fcd_hook_placement_mode"
+            "fcd_hook_placement_mode", "fcd_camera_preset"
         ]
         # Add order props
         prop_names = [

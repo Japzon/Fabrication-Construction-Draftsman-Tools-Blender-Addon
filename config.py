@@ -235,7 +235,11 @@ MECH_CATEGORIES_RAW = [
     ('BASIC_SHAPE', "Basic Shapes", "Generate parametric primitive shapes"),
 ]
 MECH_CATEGORIES_SORTED = sorted(MECH_CATEGORIES_RAW, key=itemgetter(1))
-ALL_CATEGORIES_SORTED = sorted(MECH_CATEGORIES_RAW + [('ELECTRONICS', "Electronics", "Generate electronic components")], key=itemgetter(1))
+ALL_CATEGORIES_SORTED = sorted(MECH_CATEGORIES_RAW + [
+    ('ELECTRONICS', "Electronics", "Generate electronic components"),
+    ('ARCHITECTURAL', "Architectural", "Generate architectural structural components"),
+    ('VEHICLE', "Vehicle", "Generate vehicle assembly components")
+], key=itemgetter(1))
 
 BONE_MODES: List[Tuple[str, str, str]] = [
     ('SINGLE', "Group", "Use the global joint tool to edit all selected bones at once"),

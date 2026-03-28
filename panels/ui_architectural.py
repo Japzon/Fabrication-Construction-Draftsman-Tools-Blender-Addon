@@ -35,8 +35,15 @@ class FCD_PT_Architectural_Presets:
         )
         
         if is_expanded:
-            # 2. Spawning Section
-            # AI Editor Note: Using a box for separation and ensuring operators align correctly.
+            # 2. Generation Size Constraint
+            cage_box = box.box()
+            cage_box.label(text="Generation Size Constraint", icon='SHADING_BBOX')
+            cage_box.prop(scene, "fcd_use_generation_cage", text="Use Size Cage")
+            row = cage_box.row()
+            row.enabled = scene.fcd_use_generation_cage
+            row.prop(scene, "fcd_generation_cage_size", text="Max Dimension")
+            
+            # 3. Structural Elements Section
             spawn_box = box.box()
             spawn_box.label(text="Structural Elements", icon='OUTLINER_OB_MESH')
             spawn_box.prop(scene, "fcd_architectural_type", text="Type")
@@ -62,7 +69,7 @@ class FCD_PT_Architectural_Presets:
                 if is_arch and props.is_part:
                     box.separator()
                     edit_box = box.box()
-                    edit_box.label(text=f"Editing: {obj.name}", icon='WRENCH')
+                    edit_box.label(text=f"Editing: {obj.name}", icon='PROPERTIES')
                     
                     # Fetch raw enum identifier
                     raw_type = str(props.type_architectural)

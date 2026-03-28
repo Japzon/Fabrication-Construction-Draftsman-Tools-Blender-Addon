@@ -215,8 +215,6 @@ def setup_dev():
             process.wait()
             
             print("\n[INFO] Blender has closed.")
-            print("Press Enter to close this development tool...")
-            input()
             return True
         except Exception as e:
             print(f"[ERROR] Launch failed: {e}")

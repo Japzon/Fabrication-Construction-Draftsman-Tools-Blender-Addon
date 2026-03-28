@@ -42,7 +42,15 @@ class FCD_PT_Camera_Cinematography:
         
         if is_expanded:
             if not obj or obj.type != 'CAMERA':
-                box.label(text="Select a Camera to begin.", icon='INFO')
+                # --- Quick Spawn Section ---
+                b_spawn = box.box()
+                b_spawn.label(text="Assign or Spawn Camera", icon='CAMERA_DATA')
+                col = b_spawn.column(align=True)
+                col.prop(scene, "fcd_camera_preset", text="Preset")
+                col.separator()
+                col.operator("fcd.create_camera", text="Spawn New Camera", icon='ADD')
+                
+                box.label(text="Or select an existing Camera to begin.", icon='INFO')
                 return
 
             props = obj.fcd_pg_mech_props

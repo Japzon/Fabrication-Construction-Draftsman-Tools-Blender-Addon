@@ -41,11 +41,13 @@ class FCD_PT_Vehicle_Presets:
         )
         
         if is_expanded:
-            # 2. Setup Cage for Scaled Spawning
+            # 2. Generation Size Constraint
             cage_box = box.box()
-            cage_box.prop(scene, "fcd_use_generation_cage", text="Enable Size Cage")
-            if scene.fcd_use_generation_cage:
-                cage_box.prop(scene, "fcd_generation_cage_size", text="Vehicle Length (L)")
+            cage_box.label(text="Generation Size Constraint", icon='SHADING_BBOX')
+            cage_box.prop(scene, "fcd_use_generation_cage", text="Use Size Cage")
+            row = cage_box.row()
+            row.enabled = scene.fcd_use_generation_cage
+            row.prop(scene, "fcd_generation_cage_size", text="Max Dimension")
             
             # 3. Preset Selection
             sel_box = box.box()
@@ -66,7 +68,7 @@ class FCD_PT_Vehicle_Presets:
                 if props.is_part and props.category == 'VEHICLE':
                     box.separator()
                     edit_box = box.box()
-                    edit_box.label(text=f"Editing {obj.name}", icon='WRENCH')
+                    edit_box.label(text=f"Editing {obj.name}", icon='PROPERTIES')
                     
                     # Safe type name extraction
                     raw_type = str(props.type_vehicle)
