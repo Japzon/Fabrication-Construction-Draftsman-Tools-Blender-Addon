@@ -80,7 +80,7 @@ class FCD_PT_Dimensions_And_Measuring:
                 
                 # Planar Display Mode Toggle
                 col2.separator()
-                col2.label(text="Dimension Alignment", icon='VIEW_ORTHO')
+                col2.label(text="Dimension Offset Alignment", icon='VIEW_ORTHO')
                 row3 = col2.row(align=True)
                 
                 # Layout the options in a grid-like fashion

@@ -2742,7 +2742,7 @@ class FCD_OT_Add_Dimension(bpy.types.Operator):
                   p1, p2 = d1[1], d2[1]
                   parent_a = (d1[0], 'VERTEX', d1[2])
                   parent_b = (d2[0], 'VERTEX', d2[2])
-              elif len(per_obj_data) == 1:
+             elif len(per_obj_data) == 1:
                   # Case B: Only one object has selection (must use vertex-to-vertex order)
                   obj, center, _ = per_obj_data[0]
                   bm = bmesh.from_edit_mesh(obj.data)

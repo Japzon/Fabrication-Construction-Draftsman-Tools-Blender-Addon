@@ -15,7 +15,7 @@ bl_info = {
     "name": "Fabrication & Construction Draftsman Tools",
     "author": "Greenlex Systems Services Incorporated",
     "version": (0, 1, 0),
-    "blender": (4, 5, 6),
+    "blender": (4, 0, 0),
     "location": "View3D > Sidebar > Draftsman Tools",
     "description": "A comprehensive toolkit for native, non-destructive URDF creation and rigging for ROS/Gazebo.",
     "category": "Import-Export",

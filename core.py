@@ -931,19 +931,22 @@ def update_arrow_settings(obj):
             if x_axis.length > 0.001:
                  x_axis.normalize()
                  # Recompute strictly orthogonal Y axis derived from X and Z
-                 y_axis = orig_z.cross(x_axis).normalize()
-                 rot_mat = mathutils.Matrix((x_axis, y_axis, orig_z)).transposed()
+                 y_axis = orig_z.cross(x_axis).normalized()
+                 rot_mat = mathutils.Matrix((tuple(x_axis), tuple(y_axis), tuple(orig_z))).transposed()
                  rot_euler = rot_mat.to_euler()
             else:
                  rot_euler = orig_z.to_track_quat('Z', 'Y').to_euler()
         else:
             # Default fallback simply tracks Z, leaving Y loosely oriented
             target_vec = direction_map.get(dir_enum, mathutils.Vector((0, 0, 1)))
-            rot_euler = orig_z.to_track_quat('Z', target_vec).to_euler()
+            rot_euler = orig_z.to_track_quat('Z', 'Y').to_euler()
             
         # 1. Update Root orientation (only if not manually aligned)
         if not obj.get("fcd_is_aligned"):
-             root.rotation_euler = rot_euler
+             if root.rotation_mode == 'QUATERNION':
+                  root.rotation_quaternion = rot_euler.to_quaternion()
+             else:
+                  root.rotation_euler = rot_euler
         
         # 2. Update Siblings scales/locations
         offset = dim_props.offset
@@ -988,10 +991,11 @@ def update_arrow_settings(obj):
                     child.data.align_x = align_choice
                     
                 if dim_props.flip_text:
-                    # Yaw 180 degrees so it is readable from the other side (back face)
-                    child.rotation_euler = (math.radians(90), 0, math.radians(180))
-                else:
+                    # Yaw to 0 degrees if flip text is triggered
                     child.rotation_euler = (math.radians(90), 0, 0)
+                else:
+                    # Default: Yaw 180 degrees so it is readable face-up initially
+                    child.rotation_euler = (math.radians(90), 0, math.radians(180))
                 
         root.update_tag()
 

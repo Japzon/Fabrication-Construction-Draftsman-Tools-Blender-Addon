@@ -513,9 +513,9 @@ def create_triangle_anchor_mesh(name_prefix: str) -> bpy.types.Mesh:
     
     # Vertices for a triangle pointing at its own origin
     # Tip at (0,0,0), base at +Z
-    v1 = bm.verts.new((0, 0.06, 0.15))
-    v2 = bm.verts.new((0.08, -0.06, 0.15))
-    v3 = bm.verts.new((-0.08, -0.06, 0.15))
+    v1 = bm.verts.new((0, 0.08, 0.15))
+    v2 = bm.verts.new((0.069, -0.04, 0.15))
+    v3 = bm.verts.new((-0.069, -0.04, 0.15))
     v_tip = bm.verts.new((0, 0, 0))
     
     bm.faces.new((v1, v2, v3))
@@ -674,8 +674,7 @@ def generate_smart_dimension_parametric(context, p1, p2, name="Dimension", paren
     dim_coll.objects.link(txt_obj)
     txt_obj.parent = root
     txt_obj["fcd_is_dimension"] = True
-    txt_obj["fcd_is_aligned"] = True
-    txt_obj.rotation_euler = (math.radians(90), 0, 0)
+    txt_obj.rotation_euler = (math.radians(90), 0, math.radians(180))
     
     # Initial Properties
     dim_props = txt_obj.fcd_pg_dim_props
