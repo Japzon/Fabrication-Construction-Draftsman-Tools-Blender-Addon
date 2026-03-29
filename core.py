@@ -940,7 +940,7 @@ def update_arrow_settings(obj):
             if child.get("fcd_is_dimension_anchor"):
                 child.scale = (arrow_s, arrow_s, arrow_s)
                 child.location = move_vec.copy()
-                if not child.name.endswith("A"):
+                if child.get("fcd_is_dimension_anchor") == "END":
                      child.location.z += length
             
             elif child.get("fcd_is_dimension_line"):
@@ -955,16 +955,15 @@ def update_arrow_settings(obj):
                 child.scale.x = line_t * 0.8 
                 child.scale.y = line_t * 0.8
                 
-                # 'Fixed Bracket' Style: extension line originates from dimension offset,
-                # stretching slightly inward towards the origin instead of spider-legging the center.
-                inward_len = min(offset * 0.85, 0.4)
+                # Extension line originates at arrow head tip and extends inward.
+                inward_len = abs(dim_props.extension_line)
                 start_loc = move_vec.copy() - (offset_local_dir * inward_len)
                 
                 child.location = start_loc
-                if not child.name.endswith("A"):
+                if child.name.endswith("ExtB"):
                     child.location.z += length
                     
-                child.scale.z = inward_len + ext_beyond
+                child.scale.z = inward_len
                 
                 # Shear vector tracking
                 child.rotation_euler = ext_rot_euler
@@ -985,10 +984,16 @@ def update_arrow_settings(obj):
                 if hasattr(child.data, "align_x"):
                     child.data.align_x = align_choice
                     
+                # Initial/base axis orientation matches the extension line's orientation
+                base_rot = ext_rot_euler.copy()
+                
                 if dim_props.flip_text:
-                    child.rotation_euler = (math.radians(90), 0, 0)
-                else:
-                    child.rotation_euler = (math.radians(90), 0, math.radians(180))
+                    base_rot.rotate_axis('X', math.pi)
+                
+                base_mat = base_rot.to_matrix()
+                user_mat = mathutils.Euler(dim_props.text_rotation).to_matrix()
+                
+                child.rotation_euler = (base_mat @ user_mat).to_euler()
                 
         root.update_tag()
 

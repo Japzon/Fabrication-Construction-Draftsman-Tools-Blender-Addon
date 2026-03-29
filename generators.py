@@ -599,6 +599,14 @@ def generate_smart_dimension_parametric(context, p1, p2, name="Dimension", paren
     initial_length = dist_vec.length
     if initial_length < 0.001: return
     
+    # AI Editor Note: Mandatory update to ensure evaluated mesh is available for vertex parenting
+    # We must ensure we are in OBJECT mode and the scene is fully evaluated.
+    if context.mode != 'OBJECT':
+         bpy.ops.object.mode_set(mode='OBJECT')
+         
+    context.view_layer.update()
+    context.evaluated_depsgraph_get().update()
+    
     # AI Editor Note: Design Strategy - The 'Root' is an Empty that handles 
     # the coordinate system and orientation. Components are siblings.
     # Generate base structure Empty

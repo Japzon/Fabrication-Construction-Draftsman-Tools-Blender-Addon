@@ -163,6 +163,7 @@ class FCD_PG_Dimension_Props(bpy.types.PropertyGroup):
     align_z: bpy.props.BoolProperty(name="+Z", default=False, update=update_arrow_settings_timer)
     align_nz: bpy.props.BoolProperty(name="-Z", default=False, update=update_arrow_settings_timer)
     flip_text: bpy.props.BoolProperty(name="Flip Text", default=False, update=update_arrow_settings_timer)
+    text_rotation: bpy.props.FloatVectorProperty(name="Text Rotation", subtype='EULER', size=3, default=(0.0, 0.0, 0.0), update=update_arrow_settings_timer)
     text_alignment: bpy.props.EnumProperty(
         name="Text Alignment",
         items=[('LEFT', "Left", ""), ('CENTER', "Center", ""), ('RIGHT', "Right", "")],
@@ -446,6 +447,10 @@ def register():
     bpy.types.Scene.fcd_pg_joint_editor_settings = bpy.props.PointerProperty(type=FCD_PG_Kinematic_Props)
     bpy.types.Object.fcd_pg_dim_props = bpy.props.PointerProperty(type=FCD_PG_Dimension_Props)
     
+    # Precision Scale State
+    bpy.types.Scene.fcd_scale_axes = bpy.props.BoolVectorProperty(name="Scale Axes", size=3, default=(True, True, True))
+    bpy.types.Scene.fcd_scale_value = bpy.props.FloatProperty(name="Value", default=1.0, subtype='DISTANCE')
+    
     # UI Visibility (Initialize/Reset)
     from .config import FCD_PANEL_PROPS, MECH_CATEGORIES_SORTED, ELECTRONICS_CATEGORIES, ALL_ELECTRONICS_TYPES, ARCHITECTURAL_TYPES, VEHICLE_TYPES, GIZMO_STYLES, BONE_MODES, BONE_AXES
     
@@ -590,7 +595,7 @@ def register():
         "fcd_order_electronics",   # 4: Electronic Presets
         "fcd_order_architectural", # 5: Architectural Presets
         "fcd_order_vehicle",       # 6: Vehicle Presets
-        "fcd_order_parametric",    # 7: Parametric Toolkit
+        "fcd_order_procedural",    # 7: Procedural Toolkit
         "fcd_order_dimensions",    # 8: Dimensions & Measuring
         "fcd_order_kinematics",    # 9: Kinematics Setup
         "fcd_order_inertial",      # 10: Inertial
@@ -630,6 +635,7 @@ def unregister():
             "fcd_text_placement_mode", "fcd_placement_mode", "fcd_part_category", "fcd_part_type",
             "fcd_electronics_category", "fcd_electronics_type", "fcd_architectural_type", "fcd_vehicle_type",
             "fcd_use_generation_cage", "fcd_generation_cage_size", "fcd_gizmo_style", "fcd_bone_mode",
+            "fcd_scale_axes", "fcd_scale_value",
             "fcd_bone_axis", "fcd_cursor_local_pos", "fcd_export_list_index", "fcd_export_check_meshes",
             "fcd_export_check_textures", "fcd_export_check_config", "fcd_export_check_launch",
             "fcd_export_mesh_format", "fcd_quick_export_format",
@@ -640,7 +646,7 @@ def unregister():
         # Add order props
         prop_names = [
             "fcd_order_ai_factory", "fcd_order_parts", "fcd_order_architectural", "fcd_order_vehicle",
-            "fcd_order_electronics", "fcd_order_parametric", "fcd_order_dimensions", "fcd_order_materials",
+            "fcd_order_electronics", "fcd_order_procedural", "fcd_order_dimensions", "fcd_order_materials",
             "fcd_order_lighting", "fcd_order_kinematics", "fcd_order_inertial", "fcd_order_collision",
             "fcd_order_transmission", "fcd_order_assets", "fcd_order_export", "fcd_order_preferences"
         ]

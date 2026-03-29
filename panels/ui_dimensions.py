@@ -11,11 +11,11 @@
 import bpy
 from . import ui_common
 
-class FCD_PT_Dimensions_And_Measuring:
+class FCD_PT_Dimensions_And_Precision_Transforms:
     """
-    Dimensions & Measuring panel.
+    Dimensions & Precision Transforms panel.
     Generates parametric mesh-based dimension displays from selected object bounding boxes,
-    with adjustable visual properties and precise measurement labels.
+    and provides accurate scaling/transform tools for drafting precision.
     """
 
     @classmethod
@@ -32,12 +32,37 @@ class FCD_PT_Dimensions_And_Measuring:
         # 1. Standardized Header
         box, is_expanded = ui_common.draw_panel_header(
             layout, context, 
-            "Dimensions & Measuring", 
+            "Dimensions & Precision Transforms", 
             "fcd_show_panel_dimensions", 
             "fcd_panel_enabled_dimensions"
         )
         
         if is_expanded:
+            # --- Section: Parametric Anchors (Moved from Procedural Toolkit) ---
+            anchor_box = box.box()
+            anchor_box.label(text="Parametric Anchors", icon='HOOK')
+            
+            # AI Editor Note: Enabled for both Edit and Object modes to support per-vertex and per-object hooks.
+            row_anchor = anchor_box.row(align=True)
+            row_anchor.operator("fcd.add_parametric_anchor", text="Attach Hook", icon='SPHERE')
+            row_anchor.operator("fcd.add_marker", text="Attach Marker", icon='EMPTY_AXIS')
+
+            # Persistent Control for Anchor Transforms (regardless of initial selection)
+            if context.scene.fcd_hook_placement_mode:
+                anchor_box.operator("fcd.toggle_hook_placement", text="Stop Hook/Marker Transform Mode", icon='CHECKMARK')
+            else:
+                anchor_box.operator("fcd.toggle_hook_placement", text="Start Hook/Marker Transform Mode", icon='TRANSFORM_ORIGINS')
+            
+            row_ops = anchor_box.row(align=True)
+            row_ops.operator("fcd.bake_anchor", text="Update Selected", icon='MODIFIER_ON')
+            row_ops.operator("fcd.cleanup_anchor", text="Remove Selected", icon='TRASH')
+
+            # Contextual info for meshes with existing hooks
+            if context.active_object and context.active_object.type == 'MESH':
+                has_hooks = any(m.type == 'HOOK' for m in context.active_object.modifiers)
+                if has_hooks:
+                    anchor_box.label(text="Mesh has active hooks", icon='INFO')
+
             # --- Smart Dimension Generator ---
             gen_box = box.box()
             col = gen_box.column(align=True)
@@ -46,19 +71,15 @@ class FCD_PT_Dimensions_And_Measuring:
             # --- Remove Selected Dimension ---
             active_obj = context.active_object
             
-            # AI Editor Note: Robustly find the dimension host (the label object)
-            # from any part of the dimension assembly.
             from .. import core
             dim_host = core.get_dimension_host(active_obj)
             is_dim = dim_host is not None
             
             if is_dim:
                 col.separator()
-                # Create a custom operator or use fcd.remove_dimension with host
-                op = col.operator("fcd.remove_dimension", text="Remove Selected Dimension", icon='TRASH')
-                # Note: fcd.remove_dimension should probably handle the host selection
+                col.operator("fcd.remove_dimension", text="Remove Selected Dimension", icon='TRASH')
             
-            # --- Display Properties ---
+            # --- Display Properties (Sub-Panel) ---
             prop_box = box.box()
             if is_dim:
                 prop_box.label(text="Display Properties", icon='PROPERTIES')
@@ -76,6 +97,7 @@ class FCD_PT_Dimensions_And_Measuring:
                 col2.prop(dim_props, "extension_line", text="Extension Line")
                 col2.prop(dim_props, "text_color", text="Label Color")
                 col2.prop(dim_props, "flip_text", text="Flip Text")
+                col2.prop(dim_props, "text_rotation", text="Text Rotation")
                 col2.prop(dim_props, "unit_display", text="Units")
                 
                 # Planar Display Mode Toggle
@@ -102,6 +124,19 @@ class FCD_PT_Dimensions_And_Measuring:
                 row = prop_box.row(align=True)
                 row.alignment = 'CENTER'
                 row.label(text="Select a dimension arrow to adjust", icon='INFO')
+
+            # --- Accurate Scale (New) ---
+            scale_box = box.box()
+            scale_box.label(text="Accurate Scaling", icon='CON_FOLLOWPATH')
+            col_scale = scale_box.column(align=True)
+            
+            row_axes = col_scale.row(align=True)
+            row_axes.prop(scene, "fcd_scale_axes", index=0, text="X", toggle=True)
+            row_axes.prop(scene, "fcd_scale_axes", index=1, text="Y", toggle=True)
+            row_axes.prop(scene, "fcd_scale_axes", index=2, text="Z", toggle=True)
+            
+            col_scale.prop(scene, "fcd_scale_value", text="Target Dimension")
+            col_scale.operator("fcd.accurate_scale", text="Apply Accurate Scale", icon='CHECKMARK')
 
 def register():
     pass

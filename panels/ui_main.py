@@ -38,8 +38,8 @@ from .ui_materials import FCD_PT_Materials_And_Textures
 from .ui_lighting import FCD_PT_Lighting_And_Atmosphere
 from . import ui_electronics
 from .ui_electronics import FCD_PT_Electronic_Presets
-from .ui_dimensions import FCD_PT_Dimensions_And_Measuring
-from .ui_parametric import FCD_PT_Parametric_Toolkit
+from .ui_dimensions import FCD_PT_Dimensions_And_Precision_Transforms
+from .ui_parametric import FCD_PT_Procedural_Toolkit
 from .ui_architectural import FCD_PT_Architectural_Presets
 from .ui_vehicle import FCD_PT_Vehicle_Presets
 from .ui_inertial import FCD_PT_Physics_Inertial
@@ -71,8 +71,8 @@ class FCD_PT_FabricationConstructionDraftsmanTools(bpy.types.Panel):
             (FCD_PT_Architectural_Presets, "fcd_order_architectural"),
             (FCD_PT_Vehicle_Presets, "fcd_order_vehicle"),
             (FCD_PT_Electronic_Presets, "fcd_order_electronics"),
-            (FCD_PT_Parametric_Toolkit, "fcd_order_parametric"),
-            (FCD_PT_Dimensions_And_Measuring, "fcd_order_dimensions"),
+            (FCD_PT_Procedural_Toolkit, "fcd_order_procedural"),
+            (FCD_PT_Dimensions_And_Precision_Transforms, "fcd_order_dimensions"),
             (FCD_PT_Materials_And_Textures, "fcd_order_materials"),
             (FCD_PT_Lighting_And_Atmosphere, "fcd_order_lighting"),
             (FCD_PT_Kinematics_Setup, "fcd_order_kinematics"),
@@ -97,16 +97,13 @@ class FCD_PT_FabricationConstructionDraftsmanTools(bpy.types.Panel):
         for _, _, panel_cls in panels_with_order:
             if hasattr(panel_cls, 'poll') and not panel_cls.poll(context):
                 continue
-            # Call the static draw method, passing in this panel's layout.
-            # Wrapped in try/except so an error in one sub-panel never
-            # prevents the panels below it from being drawn.
             try:
                 panel_cls.draw(self.layout, context)
             except Exception as e:
                 import traceback
                 err_box = self.layout.box()
                 err_box.label(text=f"Panel error: {type(e).__name__}", icon='ERROR')
-                print(f"[URDF Addon] Panel draw error in {panel_cls.__name__}: {e}")
+                print(f"[FCD Addon] Panel draw error in {panel_cls.__name__}: {e}")
                 traceback.print_exc()
 
 # ------------------------------------------------------------------------

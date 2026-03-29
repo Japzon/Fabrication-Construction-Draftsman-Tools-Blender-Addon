@@ -39,7 +39,7 @@ DEFAULT_IK_CHAIN_LENGTH: int = 255
 FCD_PANEL_PROPS: List[str] = [
     "fcd_panel_enabled_parts", "fcd_show_panel_parts",
     "fcd_panel_enabled_electronics", "fcd_show_panel_electronics",
-    "fcd_panel_enabled_parametric", "fcd_show_panel_parametric",
+    "fcd_panel_enabled_procedural", "fcd_show_panel_procedural",
     "fcd_panel_enabled_materials", "fcd_show_panel_materials",
     "fcd_panel_enabled_lighting", "fcd_show_panel_lighting",
     "fcd_panel_enabled_dimensions", "fcd_show_panel_dimensions",

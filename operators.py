@@ -2012,7 +2012,7 @@ class FCD_OT_AddParametricAnchor(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context: bpy.types.Context) -> bool:
-        return context.mode == 'EDIT_MESH'
+        return context.active_object and context.active_object.type == 'MESH'
 
     def execute(self, context: bpy.types.Context) -> Set[str]:
         obj = context.active_object
@@ -2023,23 +2023,24 @@ class FCD_OT_AddParametricAnchor(bpy.types.Operator):
         s = 1.0 / unit_scale if unit_scale > 0 else 1.0
         
         # Get selection center
-        bm = bmesh.from_edit_mesh(obj.data)
-        selected_verts = [v for v in bm.verts if v.select]
-        
-        if not selected_verts:
-            self.report({'WARNING'}, "No vertices/edges/faces selected.")
-            return {'CANCELLED'}
+        if context.mode == 'EDIT_MESH':
+            bm = bmesh.from_edit_mesh(obj.data)
+            selected_verts = [v for v in bm.verts if v.select]
+            if not selected_verts:
+                self.report({'WARNING'}, "No vertices/edges/faces selected.")
+                return {'CANCELLED'}
+        else:
+            # Object Mode: use bounding box center of active object
+            selected_verts = obj.data.vertices
+            center = sum((v.co for v in selected_verts), mathutils.Vector()) / len(selected_verts)
+            world_center = obj.matrix_world @ center
             
-        center = mathutils.Vector((0,0,0))
-        for v in selected_verts:
-            center += v.co
-        center /= len(selected_verts)
-        
-        # Transform to world space
-        world_center = obj.matrix_world @ center
-        
-        # Switch to Object Mode to create Empty and VG
-        bpy.ops.object.mode_set(mode='OBJECT')
+        if context.mode == 'EDIT_MESH':
+            center = sum((v.co for v in selected_verts), mathutils.Vector()) / len(selected_verts)
+            # Transform to world space
+            world_center = obj.matrix_world @ center
+            # Switch to Object Mode to create Empty and VG
+            bpy.ops.object.mode_set(mode='OBJECT')
         
         # Create Empty
         empty = bpy.data.objects.new(f"Hook_{obj.name}", None)
@@ -2092,31 +2093,31 @@ class FCD_OT_AddMarker(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context: bpy.types.Context) -> bool:
-        return context.mode == 'EDIT_MESH'
+        return context.active_object and context.active_object.type == 'MESH'
 
     def execute(self, context: bpy.types.Context) -> Set[str]:
         obj = context.active_object
         if not obj or obj.type != 'MESH':
             return {'CANCELLED'}
         
-        # --- AI Editor Note: Ensure Vertex Mode ---
-        # Convert any Edge/Face selection to Vertices to handle "all types" and "any amount".
-        bpy.ops.mesh.select_mode(type='VERT')
-        
-        # Get selected vertices
-        bm = bmesh.from_edit_mesh(obj.data)
-        bm.verts.ensure_lookup_table()
-        
-        # AI Editor Note: Store indices before mode switch.
-        # BMesh data is invalidated when switching to Object Mode.
-        selected_indices = [v.index for v in bm.verts if v.select]
-        
-        if not selected_indices:
-            self.report({'WARNING'}, "No vertices selected.")
-            return {'CANCELLED'}
-            
-        # Switch to Object Mode for parenting
-        bpy.ops.object.mode_set(mode='OBJECT')
+        if context.mode == 'EDIT_MESH':
+            # --- AI Editor Note: Ensure Vertex Mode ---
+            bpy.ops.mesh.select_mode(type='VERT')
+            bm = bmesh.from_edit_mesh(obj.data)
+            bm.verts.ensure_lookup_table()
+            selected_indices = [v.index for v in bm.verts if v.select]
+            if not selected_indices:
+                self.report({'WARNING'}, "No vertices selected.")
+                return {'CANCELLED'}
+            bpy.ops.object.mode_set(mode='OBJECT')
+        else:
+            # Object Mode: use all vertices (marker per vertex) or just the origin?
+            # User expectation for "marker at vertex" in object mode usually implies ALL vertices
+            # but that might be explosive. Let's stick to the active object's vertices.
+            selected_indices = [v.index for v in obj.data.vertices]
+            if not selected_indices:
+                self.report({'WARNING'}, "Object has no vertices.")
+                return {'CANCELLED'}
         
         created_count = 0
         created_empties = []
@@ -2159,7 +2160,7 @@ class FCD_OT_AddMarker(bpy.types.Operator):
 class FCD_OT_ToggleHookPlacement(bpy.types.Operator):
     """Toggle placement mode for the hook anchor. Move the empty without deforming the mesh, then stop to rebind."""
     bl_idname = "fcd.toggle_hook_placement"
-    bl_label = "Start/Stop Hook Placement Mode"
+    bl_label = "Start/Stop Hook/Marker Transform Mode"
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
@@ -2275,9 +2276,9 @@ class FCD_OT_ToggleHookPlacement(bpy.types.Operator):
         return {'FINISHED'}
 
 class FCD_OT_CleanupAnchor(bpy.types.Operator):
-    """Removes the anchor Empty and cleans up related Hook modifiers and Vertex Groups"""
     bl_idname = "fcd.cleanup_anchor"
     bl_label = "Remove Selected Hook/Marker"
+    bl_description = "Purge selected Hook/Marker"
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
@@ -2699,7 +2700,7 @@ class FCD_OT_Remove_Dimension(bpy.types.Operator):
 
 
 class FCD_OT_Add_Dimension(bpy.types.Operator):
-    """First selected is the anchor position, second selected is the variable position"""
+    """First selected is the static point, second selected is the variable point."""
     bl_idname = "fcd.add_dimension"
     bl_label = "Generate Dimensions for Selected"
     bl_options = {'REGISTER', 'UNDO'}
@@ -2738,7 +2739,9 @@ class FCD_OT_Add_Dimension(bpy.types.Operator):
              if len(per_obj_data) >= 2:
                   # Case A: Two separate objects have selections
                   # Measure from center-to-center
-                  d1, d2 = per_obj_data[0], per_obj_data[-1]
+                  o2_candidate = context.active_object
+                  d2 = next((d for d in per_obj_data if d[0] == o2_candidate), per_obj_data[-1])
+                  d1 = next((d for d in per_obj_data if d != d2), per_obj_data[0])
                   p1, p2 = d1[1], d2[1]
                   parent_a = (d1[0], 'VERTEX', d1[2])
                   parent_b = (d2[0], 'VERTEX', d2[2])
@@ -2773,13 +2776,16 @@ class FCD_OT_Add_Dimension(bpy.types.Operator):
                   def get_obj_center(o):
                       pts = [o.matrix_world @ mathutils.Vector(b) for b in o.bound_box]
                       return sum(pts, mathutils.Vector()) / 8
-                  o1, o2 = valid_sel[0], valid_sel[-1]
+                  o2 = context.active_object if context.active_object in valid_sel else valid_sel[-1]
+                  o1 = next((o for o in valid_sel if o != o2), valid_sel[0])
                   p1, p2 = get_obj_center(o1).copy(), get_obj_center(o2).copy()
                   parent_a, parent_b = (o1, 'OBJECT', 0), (o2, 'OBJECT', 0)
         
         # --- 2. GENERATION (Deselect all to prevent bleeding) ---
         if p1 is not None and p2 is not None:
+             # Ensure depsgraph evaluation before mode switch if we're coming from edit mode
              if context.mode != 'OBJECT':
+                  context.view_layer.update()
                   bpy.ops.object.mode_set(mode='OBJECT')
              
              bpy.ops.object.select_all(action='DESELECT')
@@ -5930,6 +5936,36 @@ class FCD_OT_Camera_Look_Through(bpy.types.Operator):
                     area.spaces.active.region_3d.view_perspective = 'CAMERA'
         return {'FINISHED'}
 
+class FCD_OT_AccurateScale(bpy.types.Operator):
+    """Accurately set the scale of the selected object on the chosen axes."""
+    bl_idname = "fcd.accurate_scale"
+    bl_label = "Apply Scale"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        obj = context.active_object
+        if not obj:
+            self.report({'ERROR'}, "No active object")
+            return {'CANCELLED'}
+        
+        scene = context.scene
+        axes = scene.fcd_scale_axes
+        target_dim = scene.fcd_scale_value # This is now treated as a dimension in meters
+        
+        # Calculate scale factor for each axis to reach target dimension
+        # current_dim * multiplier = target_dim  => multiplier = target_dim / current_dim
+        # We use dimensions (bounding box size) for drafting precision.
+        
+        if obj.dimensions.x > 0 and axes[0]:
+            obj.scale.x *= (target_dim / obj.dimensions.x)
+        if obj.dimensions.y > 0 and axes[1]:
+            obj.scale.y *= (target_dim / obj.dimensions.y)
+        if obj.dimensions.z > 0 and axes[2]:
+            obj.scale.z *= (target_dim / obj.dimensions.z)
+        
+        self.report({'INFO'}, f"Set dimension to {target_dim}m on selected axes")
+        return {'FINISHED'}
+
 def register():
     CLASSES = [
         FCD_OT_Browse_Library, FCD_OT_CreateCamera, FCD_OT_Camera_Setup, FCD_OT_Camera_Look_Through,
@@ -5951,7 +5987,8 @@ def register():
         FCD_OT_GenerateROS2Workspace, FCD_OT_ExportList_Add, 
         FCD_OT_ExportList_Remove, FCD_OT_Export, FCD_OT_ExportSelected, FCD_OT_TogglePlacement, 
         FCD_OT_CreateRig, FCD_OT_MergeArmatures, FCD_OT_PurgeBones, FCD_OT_ParentToActive, 
-        FCD_OT_EnterPoseMode, FCD_OT_EnterObjectMode, FCD_OT_AddBone, FCD_OT_ApplyRestPose
+        FCD_OT_EnterPoseMode, FCD_OT_EnterObjectMode, FCD_OT_AddBone, FCD_OT_ApplyRestPose,
+        FCD_OT_AccurateScale
     ]
     for cls in CLASSES:
         if hasattr(cls, 'bl_rna'):
@@ -5981,7 +6018,8 @@ def unregister():
         FCD_OT_GenerateROS2Workspace, FCD_OT_ExportList_Add, 
         FCD_OT_ExportList_Remove, FCD_OT_Export, FCD_OT_ExportSelected, FCD_OT_TogglePlacement, 
         FCD_OT_CreateRig, FCD_OT_MergeArmatures, FCD_OT_PurgeBones, FCD_OT_ParentToActive, 
-        FCD_OT_EnterPoseMode, FCD_OT_EnterObjectMode, FCD_OT_AddBone, FCD_OT_ApplyRestPose
+        FCD_OT_EnterPoseMode, FCD_OT_EnterObjectMode, FCD_OT_AddBone, FCD_OT_ApplyRestPose,
+        FCD_OT_AccurateScale
     ]
     for cls in reversed(CLASSES):
         try:

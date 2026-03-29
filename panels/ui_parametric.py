@@ -33,58 +33,27 @@ from .. import properties
 from .. import operators
 from . import ui_common
 
-class FCD_PT_Parametric_Toolkit:
+class FCD_PT_Procedural_Toolkit:
     """
     AI Editor Note:
-    This class is a drawing helper for the 'Parametric Toolkit' panel. It is not a
-    registered bpy.types.Panel, but is called by the main FCD_PT_FabricationConstructionDraftsmanToolsAutomated
+    This class is a drawing helper for the 'Procedural Toolkit' panel. It is not a
+    registered bpy.types.Panel, but is called by the main FCD_PT_FabricationConstructionDraftsmanTools
     to draw its content. This structure allows for dynamic reordering of panels.
     """
 
     @classmethod
     def poll(cls, context: bpy.types.Context) -> bool:
         # This panel is only drawn if its corresponding visibility toggle is enabled.
-        return context.scene.fcd_panel_enabled_parametric
+        return context.scene.fcd_panel_enabled_procedural
 
     @staticmethod
     def draw(layout: bpy.types.UILayout, context: bpy.types.Context) -> None:
         scene = context.scene
         # --- Header ---
-        box, is_expanded = ui_common.draw_panel_header(layout, context, "Parametric Toolkit", "fcd_show_panel_parametric", "fcd_panel_enabled_parametric")
+        box, is_expanded = ui_common.draw_panel_header(layout, context, "Procedural Toolkit", "fcd_show_panel_procedural", "fcd_panel_enabled_procedural")
 
 
         if is_expanded:
-            # --- Section: Parametric Anchors (Moved to Top) ---
-            anchor_box = box.box()
-            anchor_box.label(text="Parametric Anchors", icon='HOOK')
-            if context.mode == 'EDIT_MESH':
-                # AI Editor Note: Swapped icons and renamed marker operator per user request.
-                anchor_box.operator("fcd.add_parametric_anchor", text="Attach Hook to Selected", icon='SPHERE')
-                anchor_box.operator("fcd.add_marker", text="Attach Marker to Vertex", icon='EMPTY_AXIS')
-            else:
-                if context.active_object and context.active_object.type == 'EMPTY':
-                    if context.scene.fcd_hook_placement_mode:
-                        anchor_box.operator("fcd.toggle_hook_placement", text="Stop Hook Placement Mode", icon='CHECKMARK')
-                    else:
-                        anchor_box.operator("fcd.toggle_hook_placement", text="Start Hook Placement Mode", icon='TRANSFORM_ORIGINS')
-                    
-                    # AI Editor Note: Updated UI layout per user request.
-                    anchor_box.operator("fcd.bake_anchor", text="Update Selected Objects with Hooks", icon='MODIFIER_ON')
-                    anchor_box.operator("fcd.cleanup_anchor", text="Remove Selected Hook/Marker", icon='TRASH')
-                elif context.active_object and context.active_object.type == 'MESH':
-                     # AI Editor Note: Check for hooks to show update button
-                     has_hooks = False
-                     for mod in context.active_object.modifiers:
-                         if mod.type == 'HOOK':
-                             has_hooks = True
-                             break
-                     
-                     if has_hooks:
-                         anchor_box.operator("fcd.bake_anchor", text="Update Selected Objects with Hooks", icon='MODIFIER_ON')
-
-                     anchor_box.label(text="Enter Edit Mode to add anchors", icon='INFO')
-                else:
-                    anchor_box.label(text="Enter Edit Mode to add anchors", icon='INFO')
 
 
 
@@ -148,12 +117,12 @@ class FCD_PT_Parametric_Toolkit:
 
 
 def register():
-    for cls in [FCD_PT_Parametric_Toolkit]:
+    for cls in [FCD_PT_Procedural_Toolkit]:
         if hasattr(cls, 'bl_rna'):
             bpy.utils.register_class(cls)
 
 def unregister():
-    for cls in reversed([FCD_PT_Parametric_Toolkit]):
+    for cls in reversed([FCD_PT_Procedural_Toolkit]):
         if hasattr(cls, 'bl_rna'):
             bpy.utils.unregister_class(cls)
 
