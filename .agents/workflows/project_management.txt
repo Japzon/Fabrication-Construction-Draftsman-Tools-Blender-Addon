@@ -13,8 +13,8 @@ Category Index: {
 4.2 Debugging and Console Discipline (Mandatory)
 5.  Procedural Safety Limitations
 6.  Code Skeleton Standards (generators.py)
-7.  Naming Transition & Extension Compliance (March 2026)
-8.  Current Session Tasks Log (2026-03-28)
+7.  Naming Transition & Extension Compliance
+8.  Current Session Tasks Log
 }
 
 1. Strict Operational Protocols
@@ -98,7 +98,7 @@ To enforce memory safety and maintain structural integrity, all procedural mesh 
  * Data Extraction: Must pull directly from the properly prefixed PropertyGroup (fcd_pg_mech_props).
  * Memory Cycle: bmesh.new() must always be paired with bm.free() at the end of the function.
 
-7. Naming Transition & Extension Compliance (March 2026)
+7. Naming Transition & Extension Compliance
 * Previous Name: Robot System Simulation Generator AI / fabrication_construction_draftsman_tools_automated
 * Current Name: Fabrication & Construction Draftsman Tools
 * Repository Folder: Fabrication-Construction-Draftsman-Tools-Blender-Addon
@@ -106,18 +106,4 @@ To enforce memory safety and maintain structural integrity, all procedural mesh 
 * Mandatory Folder Name (in AppData/Extensions): fabrication_construction_draftsman_tools
 * All internal references must be updated to the new module name to prevent "Inconsistent name mismatch" errors during registration.
 
-8. Current Session Tasks Log (2026-03-28)
-* Fix the "Inconsistent name mismatch" error: Rename ADDON_NAME to lowercase 'fabrication_construction_draftsman_tools'.
-* Normalize zip_addon.py to ensure the folder inside the ZIP matches the Extension ID.
-* Synchronize dev_tool.py and reg_test_blender.py with the lowercase ID.
-* Fix the "Incompatible missing license" error: Added 'license = ["GPL-3.0-or-later"]' to blender_manifest.toml.
-* Fix the "Incompatible missing blender_version_min" error: Corrected field name to 'blender_version_min = "4.2.0"' in manifest.
-* Resolve the "No module named" registration failure by using namespaced paths in dev utility. (Done)
-* Fix Gizmo Stacking Bug: Resolve the issue where kinematic gizmos are "left behind" or stack on bones during joint type changes. (Done)
-* Implement Widget Visibility Controls: Ensure gizmo template objects in the 'Widgets' collection are hidden from the viewport and render. (Done)
-* Optimize Property Update Timers: Consolidate property update callbacks into named functions to prevent multiple redundant timer registrations during slider dragging. (Done)
-* Normalize Console Logs: Silenced legacy check logs in `_dev/cleanup_addons.py` to remove outdated name clutter from startup. (Done)
-* Spherical Gizmo Update: Implement a unique spherical/ball-and-socket gizmo (wireframe sphere) instead of reusing the revolute ring.
-* Sync Joint Radius in Kinematics: Ensure `joint_radius` is correctly stored in physical meters and reflected in both viewport gizmo scaling and gear ratio calculations.
-* Stabilize Dimension Tool: Refactor dimension generation into generators.py and move visual update logic to core.py to resolve AttributeError and comply with architectural standards.
-* Dimensional Utility Enhancement: Implement procedural mesh generation for dimension lines and anchor "Flat Triangles" at endpoints to facilitate mechatronic hook parenting.
+8. Current Session Tasks Log

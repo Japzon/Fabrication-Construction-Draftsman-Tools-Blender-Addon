@@ -474,20 +474,56 @@ def update_native_rope_properties(obj, props, context):
     obj["rope_twist"] = props.twist
 
 # ------------------------------------------------------------------------
-#   DIMENSION GENERATORS
+#   DIMENSION GENERATOR UTILS
 # ------------------------------------------------------------------------
 
+def get_dimensions_collection(context):
+    """Ensures the FCD_Dimensions collection exists and is visible in the current view layer."""
+    coll_name = "FCD_Dimensions"
+    scene_coll = context.scene.collection
+    
+    coll = bpy.data.collections.get(coll_name)
+    if not coll:
+        coll = bpy.data.collections.new(coll_name)
+        scene_coll.children.link(coll)
+    
+    # AI Editor Note: Must ensure visibility on the View Layer (LayerCollection)
+    # Recursively find the layer collection safely
+    def find_layer_coll(root, target_name):
+        if root.name == target_name: return root
+        for child in root.children:
+            found = find_layer_coll(child, target_name)
+            if found: return found
+        return None
+
+    layer_coll = find_layer_coll(context.view_layer.layer_collection, coll_name)
+    if layer_coll:
+        layer_coll.hide_viewport = False
+        layer_coll.exclude = False
+        
+    return coll
+
 def create_triangle_anchor_mesh(name_prefix: str) -> bpy.types.Mesh:
-    """Procedurally creates a flat triangle mesh for hook parenting."""
+    """
+    Procedurally creates a flat triangle mesh for hook parenting.
+    Oriented to point towards (0,0,0) from the +Z direction.
+    """
     mesh = bpy.data.meshes.new(f"{name_prefix}_Triangle_Anchor")
     bm = bmesh.new()
     
-    # Create a 3-sided circle (Triangle) effectively
-    bmesh.ops.create_circle(bm, cap_ends=True, radius=0.05, segments=3)
+    # Vertices for a triangle pointing at its own origin
+    # Tip at (0,0,0), base at +Z
+    v1 = bm.verts.new((0, 0.06, 0.15))
+    v2 = bm.verts.new((0.08, -0.06, 0.15))
+    v3 = bm.verts.new((-0.08, -0.06, 0.15))
+    v_tip = bm.verts.new((0, 0, 0))
     
-    # Rotate it to face the measuring axis (Z)
-    bmesh.ops.rotate(bm, verts=bm.verts, matrix=mathutils.Matrix.Rotation(math.radians(90), 4, 'X'))
+    bm.faces.new((v1, v2, v3))
+    bm.faces.new((v1, v2, v_tip))
+    bm.faces.new((v2, v3, v_tip))
+    bm.faces.new((v3, v1, v_tip))
     
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     bm.to_mesh(mesh)
     bm.free()
     return mesh
@@ -497,9 +533,10 @@ def create_dimension_line_mesh(name_prefix: str) -> bpy.types.Mesh:
     mesh = bpy.data.meshes.new(f"{name_prefix}_Line")
     bm = bmesh.new()
     
-    # Simple thin cylinder as the line (default 1m long along Z)
-    bmesh.ops.create_cone(bm, cap_ends=True, radius1=0.002, radius2=0.002, depth=1.0, segments=8, matrix=mathutils.Matrix.Translation((0,0,0.5)))
+    # Simple thin cylinder as the line (default 1m long along Z, 1m radius for 1:1 scaling)
+    bmesh.ops.create_cone(bm, cap_ends=True, radius1=1.0, radius2=1.0, depth=1.0, segments=12, matrix=mathutils.Matrix.Translation((0,0,0.5)))
     
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     bm.to_mesh(mesh)
     bm.free()
     return mesh
@@ -544,11 +581,16 @@ def setup_dimension_gn(obj: bpy.types.Object):
     
     mod.node_group = group
 
-def generate_smart_dimension_parametric(context, p1, p2, name="Dimension", parent_a=None):
+def generate_smart_dimension_parametric(context, p1, p2, name="Dimension", parent_a=None, parent_b=None):
     """
-    Spawns a procedural dimension line with mechatronic anchor triangles.
-    Uses the Scene fcd_dim_ settings as initial defaults.
+    Spawns a procedural dimension assembly using an Empty root for clean hierarchy.
+    Ensures children (anchors, lines, labels) have independent scaling.
     """
+    # AI Editor Note: Mandatory transition to Object Mode.
+    # Procedural assembly and parenting are only stable in Object Mode.
+    if context.mode != 'OBJECT':
+         bpy.ops.object.mode_set(mode='OBJECT')
+         
     scene = context.scene
     coll = context.collection
     
@@ -557,69 +599,155 @@ def generate_smart_dimension_parametric(context, p1, p2, name="Dimension", paren
     initial_length = dist_vec.length
     if initial_length < 0.001: return
     
-    # 2. Spawn Anchor Start (Triangle)
+    # AI Editor Note: Design Strategy - The 'Root' is an Empty that handles 
+    # the coordinate system and orientation. Components are siblings.
+    # Generate base structure Empty
+    root = bpy.data.objects.new(f"{name}_Root", None)
+    dim_coll = get_dimensions_collection(context)
+    dim_coll.objects.link(root)
+    root.empty_display_type = 'ARROWS'
+    root.empty_display_size = 0.5
+    root.location = p1
+    root["fcd_dist_vec"] = [dist_vec.x, dist_vec.y, dist_vec.z]
+    
+    # AI Editor Note: Initial orientation tracks the target p2 directly with Z
+    rot_quat = dist_vec.to_track_quat('Z', 'Y')
+    root.rotation_mode = 'QUATERNION'
+    root.rotation_quaternion = rot_quat
+    
+    # 2. Spawn Anchor Start (Triangle, Child of Root)
     tri_mesh = create_triangle_anchor_mesh(name)
     aa = bpy.data.objects.new(name, tri_mesh)
-    coll.objects.link(aa)
+    dim_coll.objects.link(aa)
+    aa.parent = root
     aa["fcd_is_dimension_anchor"] = "START"
+    aa.location = (0, 0, 0)
     
-    # Initial transform to point p1->p2
-    aa.location = p1
-    aa.rotation_mode = 'QUATERNION'
-    aa.rotation_quaternion = dist_vec.to_track_quat('Z', 'Y')
-    
-    # APPLY SCENE DEFAULTS
-    aa.scale = (scene.fcd_dim_arrow_scale, scene.fcd_dim_arrow_scale, scene.fcd_dim_arrow_scale)
-    
-    # 3. Spawn Anchor End (Triangle, Child of AA)
+    # 3. Spawn Anchor End (Triangle, Child of Root)
     ab = bpy.data.objects.new(f"{name}_End", tri_mesh.copy())
-    coll.objects.link(ab)
-    ab.parent = aa
+    dim_coll.objects.link(ab)
+    ab.parent = root
     ab["fcd_is_dimension_anchor"] = "END"
+    # End is at the target length, rotated 180 to point at the target
     ab.location = (0, 0, initial_length)
-    ab.scale = (1.0, 1.0, 1.0) # Relative
+    ab.rotation_euler = (math.radians(180), 0, 0) # Flip to point to P2
     
-    # 4. Procedural Dimension Line (Body)
+    # AI Editor Note: Design Strategy - Dedicated Hook Empty.
+    # We parent mechatronic parts to this hook which NEVER scales, 
+    # ensuring that visual arrow size doesn't distort the attached parts.
+    hook = bpy.data.objects.new(f"{name}_EndHook", None)
+    dim_coll.objects.link(hook)
+    hook.parent = root
+    hook["fcd_is_dimension_hook"] = "END"
+    hook.empty_display_type = 'CIRCLE'
+    hook.empty_display_size = 0.02
+    hook.location = (0, 0, initial_length)
+    
+    # 4. Extension Lines (Drafting legs from arrowheads to objects)
+    def create_ext_line(name_suffix, loc_z, offset_y):
+        mesh = create_dimension_line_mesh(f"{name}_{name_suffix}")
+        obj = bpy.data.objects.new(f"{name}_{name_suffix}", mesh)
+        dim_coll.objects.link(obj)
+        obj.parent = root
+        obj["fcd_is_extension_line"] = True
+        # Start at arrowhead and point back to object
+        obj.location = (0, offset_y, loc_z)
+        obj.rotation_euler = (math.radians(90), 0, 0) 
+        return obj
+
+    ext_a = create_ext_line("ExtA", 0.0, scene.fcd_dim_offset)
+    ext_b = create_ext_line("ExtB", initial_length, scene.fcd_dim_offset)
+
+    # 5. Procedural Dimension Line (Body, Child of Root)
     line_mesh = create_dimension_line_mesh(name)
     dim_line = bpy.data.objects.new(f"{name}_Line", line_mesh)
-    coll.objects.link(dim_line)
-    dim_line.parent = aa
+    dim_coll.objects.link(dim_line)
+    dim_line.parent = root
     dim_line["fcd_is_dimension_line"] = True
     dim_line.location = (0, 0, 0)
-    dim_line.scale = (1.0, 1.0, initial_length) # Procedural scaling
+    # Line is 1m long, so s.z = length
+    dim_line.scale = (1.0, 1.0, initial_length) 
     
-    # 5. Label Object (The UI handle host)
-    txt_mesh = bpy.data.meshes.new(f"{name}_Label_Mesh")
-    txt_obj = bpy.data.objects.new(f"{name}_Label", txt_mesh)
-    coll.objects.link(txt_obj)
+    # 5. Label Object (FONT Curve for visibility)
+    txt_curve = bpy.data.curves.new(f"{name}_Label_Curve", 'FONT')
+    txt_obj = bpy.data.objects.new(f"{name}_Label", txt_curve)
+    dim_coll.objects.link(txt_obj)
+    txt_obj.parent = root
     txt_obj["fcd_is_dimension"] = True
+    txt_obj["fcd_is_aligned"] = True
+    txt_obj.rotation_euler = (math.radians(90), 0, 0)
     
+    # Initial Properties
     dim_props = txt_obj.fcd_pg_dim_props
     dim_props.length = initial_length
     dim_props.arrow_scale = scene.fcd_dim_arrow_scale
     dim_props.text_scale = scene.fcd_dim_text_scale
+    dim_props.offset = scene.fcd_dim_offset
+    dim_props.line_thickness = 0.002
     
-    # Position label at midpoint slightly offset
-    txt_obj.parent = aa
-    txt_obj.location = (0, scene.fcd_dim_offset, initial_length / 2)
-    txt_obj.scale = (scene.fcd_dim_text_scale, scene.fcd_dim_text_scale, scene.fcd_dim_text_scale)
+    # Trigger initial update
+    core.update_arrow_settings(txt_obj)
     
     # Assign Material
     core.get_or_create_text_material(txt_obj)
     aa.active_material = core.get_or_create_text_material(txt_obj)
     ab.active_material = aa.active_material
     dim_line.active_material = aa.active_material
+    ext_a.active_material = aa.active_material
+    ext_b.active_material = aa.active_material
     
-    # Parent A to specific vertex if provided
+    # 6. Visibility Enhancements (Drafting Style)
+    # AI Editor Note: Set 'In Front' to ensure visibility even inside targets
+    for o in [root, aa, ab, dim_line, txt_obj, hook, ext_a, ext_b]:
+         if o:
+              o.show_in_front = True
+              # Make them stand out in Solid mode
+              o.color = (0.0, 0.4, 1.0, 1.0) # Bright Blue
+    
     if parent_a:
-        obj, type, index = parent_a
-        aa.parent = obj
-        if type == 'VERTEX':
-            aa.parent_type = 'VERTEX'
-            aa.parent_vertices[0] = index
+        obj_a, type_a, index_a = parent_a
+        # AI Editor Note: Pre-parenting sync
+        if obj_a.type == 'MESH':
+             obj_a.data.update()
+        context.view_layer.update()
+        
+        root.matrix_world.translation = p1
+        old_mat = root.matrix_world.copy()
+        
+        root.parent = obj_a
+        if type_a == 'VERTEX':
+             root.parent_type = 'VERTEX'
+             root.parent_vertices[0] = index_a
+             
+        # AI Editor Note: Restore world transform after parenting to maintain exact center offset
+        root.matrix_parent_inverse = obj_a.matrix_world.inverted()
+        root.matrix_world = old_mat
+        
+        context.view_layer.update()
+            
+    # Parent the second object to the EndHook if provided.
+    # This allows the 'Length' property to actually MOVE the second part 
+    # without visual arrow scaling affecting it.
+    if parent_b:
+        obj_b, type_b, index_b = parent_b
+        if obj_b:
+            # Preserve world transform during parenting
+            old_matrix = obj_b.matrix_world.copy()
+            obj_b.parent = hook
+            if type_b == 'VERTEX':
+                 # Custom vertex parenting logic for Hook
+                 pass
+            obj_b.matrix_world = old_matrix
+            
+    # Finalize setup visual settings
+    if hasattr(core, 'update_arrow_settings'):
+         core.update_arrow_settings(txt_obj)
     
-    # Finalize setup
-    if hasattr(core, 'update_dimension_length'):
-         core.update_dimension_length(txt_obj)
+    # AI Editor Note: Use direct selection to avoid context errors in Edit Mode.
+    # bpy.ops.object.select_all(action='DESELECT') can fail if in Edit Mode.
+    for o in context.selected_objects:
+        o.select_set(False)
+    txt_obj.select_set(True)
+    context.view_layer.objects.active = txt_obj
     
     return txt_obj

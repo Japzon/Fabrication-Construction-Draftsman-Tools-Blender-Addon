@@ -146,16 +146,29 @@ class FCD_PG_Dimension_Props(bpy.types.PropertyGroup):
     Parametric properties for dimension labels and arrow heads.
     Uses timer-based updates to maintain UI responsiveness.
     """
-    arrow_scale: bpy.props.FloatProperty(name="Arrow Scale", default=0.1, min=0.001, soft_max=2.0, update=update_arrow_settings_timer)
-    text_scale: bpy.props.FloatProperty(name="Label Scale", default=0.1, min=0.001, soft_max=2.0, update=update_arrow_settings_timer)
-    line_thickness: bpy.props.FloatProperty(name="Line Thickness", default=0.002, min=0.0, unit='LENGTH')
-    offset: bpy.props.FloatProperty(name="Offset", default=0.1, unit='LENGTH', update=update_arrow_settings_timer)
-    extension: bpy.props.FloatProperty(name="Extension", default=0.05, unit='LENGTH')
+    arrow_scale: bpy.props.FloatProperty(name="Arrow Scale", default=0.1, min=0.001, update=update_arrow_settings_timer)
+    text_scale: bpy.props.FloatProperty(name="Text Size", default=0.1, min=0.001, soft_max=2.0, update=update_arrow_settings_timer)
+    line_thickness: bpy.props.FloatProperty(name="Line Thickness", default=0.002, min=0.0, unit='LENGTH', update=update_arrow_settings_timer)
+    offset: bpy.props.FloatProperty(name="Offset from Target", default=0.1, unit='LENGTH', update=update_arrow_settings_timer)
+    extension_line: bpy.props.FloatProperty(name="Extension Line", default=0.05, unit='LENGTH', update=update_arrow_settings_timer)
     text_color: bpy.props.FloatVectorProperty(name="Label Color", subtype='COLOR', default=(0.0, 0.0, 0.0, 1.0), size=4, min=0.0, max=1.0, update=update_text_color)
-    unit_display: bpy.props.EnumProperty(name="Units", items=[('METERS', "Meters (m)", ""), ('MM', "Millimeters (mm)", "")], default='METERS')
-    length: bpy.props.FloatProperty(name="Length", default=1.0, unit='LENGTH', update=update_dimension_length_timer)
+    unit_display: bpy.props.EnumProperty(name="Units", items=[('METERS', "Meters (m)", ""), ('MM', "Millimeters (mm)", "")], default='METERS', update=update_dimension_length_timer)
+    length: bpy.props.FloatProperty(name="Line Length", default=1.0, unit='LENGTH', update=update_dimension_length_timer)
     direction: bpy.props.EnumProperty(name="Direction", items=[('X', "X", ""), ('Y', "Y", ""), ('Z', "Z", ""), ('-X', "-X", ""), ('-Y', "-Y", ""), ('-Z', "-Z", "")], default='Z', update=update_arrow_settings_timer)
     is_manual: bpy.props.BoolProperty(name="Manual Mode", default=False)
+    align_x: bpy.props.BoolProperty(name="+X", default=False, update=update_arrow_settings_timer)
+    align_nx: bpy.props.BoolProperty(name="-X", default=False, update=update_arrow_settings_timer)
+    align_y: bpy.props.BoolProperty(name="+Y", default=False, update=update_arrow_settings_timer)
+    align_ny: bpy.props.BoolProperty(name="-Y", default=False, update=update_arrow_settings_timer)
+    align_z: bpy.props.BoolProperty(name="+Z", default=False, update=update_arrow_settings_timer)
+    align_nz: bpy.props.BoolProperty(name="-Z", default=False, update=update_arrow_settings_timer)
+    flip_text: bpy.props.BoolProperty(name="Flip Text", default=False, update=update_arrow_settings_timer)
+    text_alignment: bpy.props.EnumProperty(
+        name="Text Alignment",
+        items=[('LEFT', "Left", ""), ('CENTER', "Center", ""), ('RIGHT', "Right", "")],
+        default='CENTER',
+        update=update_arrow_settings_timer
+    )
 
 class FCD_PG_Mech_Props(bpy.types.PropertyGroup):
     is_part: bpy.props.BoolProperty(default=False)
@@ -488,9 +501,9 @@ def register():
     )
     
     # 1.1 Dimension Globals (FCD Scoped)
-    bpy.types.Scene.fcd_dim_arrow_scale = bpy.props.FloatProperty(name="Arrow Scale", default=0.1, min=0.001)
-    bpy.types.Scene.fcd_dim_text_scale = bpy.props.FloatProperty(name="Label Scale", default=0.1, min=0.001)
-    bpy.types.Scene.fcd_dim_offset = bpy.props.FloatProperty(name="Offset", default=0.1, unit='LENGTH')
+    bpy.types.Scene.fcd_dim_arrow_scale = bpy.props.FloatProperty(name="Arrow Scale", default=1.0, min=0.01)
+    bpy.types.Scene.fcd_dim_text_scale = bpy.props.FloatProperty(name="Text Scale", default=1.0, min=0.01)
+    bpy.types.Scene.fcd_dim_offset = bpy.props.FloatProperty(name="Offset", default=0.5, min=0.0, unit='LENGTH')
     bpy.types.Scene.fcd_dim_axis = bpy.props.EnumProperty(
         name="Measurement Axis", 
         items=[('X', "X", ""), ('Y', "Y", ""), ('Z', "Z", ""), ('ALL', "All Axes", "")], 

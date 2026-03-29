@@ -8,9 +8,6 @@
 # original authorship for themselves. Proper attribution is mandatory.
 # --------------------------------------------------------------------------------
 
-
-
-
 import bpy
 from . import ui_common
 
@@ -48,33 +45,60 @@ class FCD_PT_Dimensions_And_Measuring:
             
             # --- Remove Selected Dimension ---
             active_obj = context.active_object
-            is_dim = active_obj and active_obj.get("fcd_is_dimension")
+            
+            # AI Editor Note: Robustly find the dimension host (the label object)
+            # from any part of the dimension assembly.
+            from .. import core
+            dim_host = core.get_dimension_host(active_obj)
+            is_dim = dim_host is not None
             
             if is_dim:
                 col.separator()
-                col.operator("fcd.remove_dimension", text="Remove Selected Dimension", icon='TRASH')
-
+                # Create a custom operator or use fcd.remove_dimension with host
+                op = col.operator("fcd.remove_dimension", text="Remove Selected Dimension", icon='TRASH')
+                # Note: fcd.remove_dimension should probably handle the host selection
+            
             # --- Display Properties ---
             prop_box = box.box()
-            # The display properties should only fully appear when an arrow is selected
             if is_dim:
                 prop_box.label(text="Display Properties", icon='PROPERTIES')
                 col2 = prop_box.column(align=True)
-                dim_props = active_obj.fcd_pg_dim_props
+                dim_props = dim_host.fcd_pg_dim_props
                 
-                # AI Editor Note: 'Length' allows for precise input of dimensions.
-                col2.prop(dim_props, "length", text="Length")
+                # 'Length' allows for precise input of dimensions.
+                col2.prop(dim_props, "length", text="Line Length")
                 
                 row2 = col2.row(align=True)
                 row2.prop(dim_props, "arrow_scale", text="Arrow")
-                row2.prop(dim_props, "text_scale", text="Label")
+                row2.prop(dim_props, "text_scale", text="Text Size")
                 col2.prop(dim_props, "line_thickness", text="Line Thickness")
-                col2.prop(dim_props, "offset", text="Offset from Object")
-                col2.prop(dim_props, "extension", text="End Extension")
+                col2.prop(dim_props, "offset", text="Offset from Target")
+                col2.prop(dim_props, "extension_line", text="Extension Line")
                 col2.prop(dim_props, "text_color", text="Label Color")
+                col2.prop(dim_props, "flip_text", text="Flip Text")
                 col2.prop(dim_props, "unit_display", text="Units")
+                
+                # Planar Display Mode Toggle
+                col2.separator()
+                col2.label(text="Dimension Alignment", icon='VIEW_ORTHO')
+                row3 = col2.row(align=True)
+                
+                # Layout the options in a grid-like fashion
+                row_pos = col2.row(align=True)
+                row_pos.prop(dim_props, "align_x", toggle=True, text="+X")
+                row_pos.prop(dim_props, "align_y", toggle=True, text="+Y")
+                row_pos.prop(dim_props, "align_z", toggle=True, text="+Z")
+                
+                row_neg = col2.row(align=True)
+                row_neg.prop(dim_props, "align_nx", toggle=True, text="-X")
+                row_neg.prop(dim_props, "align_ny", toggle=True, text="-Y")
+                row_neg.prop(dim_props, "align_nz", toggle=True, text="-Z")
+                
+                col2.separator()
+                col2.label(text="Text Alignment", icon='ALIGN_CENTER')
+                row_text = col2.row(align=True)
+                row_text.prop(dim_props, "text_alignment", expand=True)
             else:
-                # A display to select a dimension arrow is shown when no arrows are selected
                 row = prop_box.row(align=True)
                 row.alignment = 'CENTER'
                 row.label(text="Select a dimension arrow to adjust", icon='INFO')
@@ -84,4 +108,3 @@ def register():
 
 def unregister():
     pass
-

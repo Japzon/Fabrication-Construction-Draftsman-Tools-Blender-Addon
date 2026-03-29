@@ -2648,29 +2648,53 @@ class FCD_OT_Remove_Dimension(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
+        from . import core
         obj = context.active_object
-        return obj and obj.get("fcd_is_dimension")
+        return core.get_dimension_host(obj) is not None
 
     def execute(self, context):
-        text_obj = context.active_object
-        objects_to_delete = {text_obj}
-        
-        # Find Anchor
-        anchor = text_obj.parent
-        if anchor:
-            objects_to_delete.add(anchor)
+        from . import core
+        host = core.get_dimension_host(context.active_object)
+        if not host:
+            return {'CANCELLED'}
             
-            # Find Arrows from Anchor constraints
-            for c in anchor.constraints:
-                if c.type == 'COPY_LOCATION' and c.target:
-                    objects_to_delete.add(c.target)
+        # Root of the assembly
+        root = host.parent
+        if not root:
+             # Fallback if unparented
+             bpy.data.objects.remove(host, do_unlink=True)
+             return {'FINISHED'}
+
+        # Collect all components (children of the same root)
+        to_delete = {root}
+        for child in root.children:
+            to_delete.add(child)
         
-        # Delete objects
-        for obj in objects_to_delete:
-            if obj.name in context.scene.objects:
+        # AI Editor Note: SAFETY CHECK. 
+        # If any of these dimension parts are parents to other objects (Hooks), 
+        # we must unparent the victims with 'KEEP_TRANSFORM' before deletion.
+        # This prevents the machine parts from snapping to the world center.
+        all_objs = list(bpy.data.objects)
+        for parent_obj in to_delete:
+            if not parent_obj: continue
+            for victim in all_objs:
+                try: 
+                    if victim and victim.parent == parent_obj:
+                        mw = victim.matrix_world.copy()
+                        victim.parent = None
+                        victim.matrix_world = mw
+                except: continue
+
+        # Systematic deletion to avoid orphans
+        for obj in to_delete:
+            if obj and obj.name in bpy.data.objects:
+                data = obj.data
                 bpy.data.objects.remove(obj, do_unlink=True)
-            
-        self.report({'INFO'}, "Dimension removed.")
+                if data and data.users == 0:
+                    if isinstance(data, bpy.types.Mesh):
+                        bpy.data.meshes.remove(data)
+
+        self.report({'INFO'}, "Dimension assembly removed.")
         return {'FINISHED'}
 
 
@@ -2685,44 +2709,78 @@ class FCD_OT_Add_Dimension(bpy.types.Operator):
         return context.active_object is not None
 
     def execute(self, context):
+        from . import generators
+        is_edit = context.mode == 'EDIT_MESH'
         scene = context.scene
-        obj = context.active_object
         
-        # --- 1. SMART CHECK: Point-to-Point (Explicit Selection) ---
+        p1, p2 = None, None
+        parent_a, parent_b = (None, 'OBJECT', 0), (None, 'OBJECT', 0)
         
-        # A. Object Mode Multi-Selection
-        if context.mode == 'OBJECT' and len(context.selected_objects) >= 2:
-            sel = context.selected_objects
-            p1 = sel[0].matrix_world.translation
-            p2 = sel[-1].matrix_world.translation
-            generators.generate_smart_dimension_parametric(context, p1, p2, name="Selection", parent_a=(sel[0], 'OBJECT', None))
-            return {'FINISHED'}
-            
-        # B. Edit Mode Vertex Selection
-        if context.mode == 'EDIT_MESH':
-            # AI Editor Note: Must ensure BMesh is sync'd and lookup tables are initialized.
-            bm = bmesh.from_edit_mesh(obj.data)
-            bm.verts.ensure_lookup_table()
-            
-            # Use history (preferred for order) OR selection list (fallback)
-            hist = [e for e in bm.select_history if isinstance(e, bmesh.types.BMVert)]
-            verts = [v for v in bm.verts if v.select]
-            
-            if len(hist) >= 2:
-                v1, v2 = hist[0], hist[-1]
-            elif len(verts) >= 2:
-                # Use first and last in index order if no history exists (e.g., box select)
-                v1, v2 = verts[0], verts[-1]
-            else:
-                self.report({'WARNING'}, "Select at least 2 vertices for point-to-point measurement.")
-                return {'CANCELLED'}
-                
-            p1 = obj.matrix_world @ v1.co
-            p2 = obj.matrix_world @ v2.co
-            generators.generate_smart_dimension_parametric(context, p1, p2, name="Vertex_to_Vertex", parent_a=(obj, 'VERTEX', v1.index))
-            return {'FINISHED'}
+        # --- 1. DATA CAPTURE (Iterating through all objects in the edit session) ---
+        if is_edit:
+             import bmesh
+             per_obj_data = [] # (obj, selection_center, parent_vert_index)
+             
+             for obj in context.objects_in_mode:
+                  if obj.type == 'MESH':
+                       bm = bmesh.from_edit_mesh(obj.data)
+                       sel_verts = [v for v in bm.verts if v.select]
+                       if sel_verts:
+                            # AI Editor Note: Centering Fix - Average of ALL selected points on this specific part
+                            pts = [obj.matrix_world @ v.co.copy() for v in sel_verts]
+                            center = sum(pts, mathutils.Vector()) / len(pts)
+                            
+                            # Parent vert is just an anchor for the mechatronic assembly to follow.
+                            # Standard drafting: Parent to first selected member.
+                            pvid = sel_verts[0].index
+                            per_obj_data.append((obj, center, pvid))
+             
+             if len(per_obj_data) >= 2:
+                  # Case A: Two separate objects have selections
+                  # Measure from center-to-center
+                  d1, d2 = per_obj_data[0], per_obj_data[-1]
+                  p1, p2 = d1[1], d2[1]
+                  parent_a = (d1[0], 'VERTEX', d1[2])
+                  parent_b = (d2[0], 'VERTEX', d2[2])
+              elif len(per_obj_data) == 1:
+                  # Case B: Only one object has selection (must use vertex-to-vertex order)
+                  obj, center, _ = per_obj_data[0]
+                  bm = bmesh.from_edit_mesh(obj.data)
+                  hist = [e for e in bm.select_history if isinstance(e, bmesh.types.BMVert) and e.select]
+                  if len(hist) >= 2:
+                       v1, v2 = hist[-2], hist[-1]
+                       p1, p2 = obj.matrix_world @ v1.co.copy(), obj.matrix_world @ v2.co.copy()
+                       parent_a = (obj, 'VERTEX', v1.index)
+                       parent_b = (obj, 'VERTEX', v2.index)
+        
+        # Prevent Single-Object Edit Mode from spawning Bounding Boxes if history is invalid
+        if is_edit and (p1 is None or p2 is None):
+             self.report({'WARNING'}, "Please select at least two points sequentially in Edit Mode.")
+             return {'CANCELLED'}
+             
+        elif not is_edit:
+             sel = context.selected_objects
+             # Ignore existing dimension parts
+             valid_sel = [o for o in sel if not o.get("fcd_is_dimension_anchor") and not o.get("fcd_is_dimension")]
+             if len(valid_sel) >= 2:
+                  def get_obj_center(o):
+                      pts = [o.matrix_world @ mathutils.Vector(b) for b in o.bound_box]
+                      return sum(pts, mathutils.Vector()) / 8
+                  o1, o2 = valid_sel[0], valid_sel[-1]
+                  p1, p2 = get_obj_center(o1).copy(), get_obj_center(o2).copy()
+                  parent_a, parent_b = (o1, 'OBJECT', 0), (o2, 'OBJECT', 0)
+        
+        # --- 2. GENERATION (Deselect all to prevent bleeding) ---
+        if p1 is not None and p2 is not None:
+             if context.mode != 'OBJECT':
+                  bpy.ops.object.mode_set(mode='OBJECT')
+             
+             bpy.ops.object.select_all(action='DESELECT')
+             generators.generate_smart_dimension_parametric(context, p1, p2, parent_a=parent_a, parent_b=parent_b)
+             return {'FINISHED'}
 
         # --- 2. FALLBACK: Bounding Box (Single Selection) ---
+        obj = context.active_object
         if obj.type != 'MESH':
             self.report({'WARNING'}, "Single object selection requires a Mesh for bounding box measurement.")
             return {'CANCELLED'}

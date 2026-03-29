@@ -223,6 +223,7 @@ BASIC_JOINT_TYPES: List[Tuple[str, str, str]] = sorted([
 ], key=itemgetter(1))
 
 MECH_CATEGORIES_RAW = [
+    ('NONE', "None/Tool", "No mechanical category (standard tool or helper)"),
     ('GEAR', "Gears", "Generate gears"),
     ('RACK', "Racks", "Generate gear racks"),
     ('FASTENER', "Fasteners", "Generate fasteners"),

@@ -812,6 +812,34 @@ def get_or_create_text_material(target_obj):
     mat.diffuse_color = color
     return mat
 
+def get_dimension_host(obj: Optional[bpy.types.Object]) -> Optional[bpy.types.Object]:
+    """
+    Robustly identifies the host of the dimension properties (the Label object)
+    from any component of a dimension assembly (Root, Anchors, Line, or Label).
+    """
+    if not obj:
+        return None
+    
+    # 1. Direct hit (The user selected the Label)
+    if obj.get("fcd_is_dimension"):
+        return obj
+    
+    # 2. Check siblings and children via the Root Empty
+    parent = obj.parent
+    # If we selected a child (Anchor/Line), go to Root then back to Label
+    if parent and (obj.get("fcd_is_dimension_anchor") or obj.get("fcd_is_dimension_line")):
+        for child in parent.children:
+            if child.get("fcd_is_dimension"):
+                return child
+    
+    # 3. If we selected the Root Empty itself
+    if obj.name.endswith("_Root"):
+        for child in obj.children:
+            if child.get("fcd_is_dimension"):
+                return child
+                
+    return None
+
 def update_dimension_length(obj):
     """
     Updates the position of endpoints and procedural line scale for the dimension.
@@ -825,24 +853,34 @@ def update_dimension_length(obj):
     
     length = dim_props.length
     
-    # Root of the dimension assembly
+    # Root for sibling lookup
     root = obj.parent
     if not root: return
     
-    # Find children to update
+    # AI Editor Note: All components are siblings under the same root.
     for child in root.children:
-        # Update Anchor End position
-        if child.get("fcd_is_dimension_anchor") == "END":
+        is_end = child.get("fcd_is_dimension_anchor") == "END" or child.get("fcd_is_dimension_hook") == "END"
+        is_ext_b = child.get("fcd_is_extension_line") and child.name.endswith("ExtB")
+        
+        if is_end or is_ext_b:
             child.location.z = length
-            child.update_tag()
-            
-        # Update Procedural Line scale
         elif child.get("fcd_is_dimension_line"):
             child.scale.z = length
-            child.update_tag()
             
-    # Update Label position (midpoint)
+    # Update Label content (FONT Curve handling)
+    unit_str = "m" if dim_props.unit_display == 'METERS' else "mm"
+    val = length if unit_str == "m" else length * 1000.0
+    
+    if hasattr(obj.data, "body"):
+         obj.data.body = f"{val:.2f} {unit_str}"
+         
+    # AI Editor Note: Centering Fix - Label must stay at length/2
     obj.location.z = length / 2
+    obj.update_tag()
+    
+    # AI Editor Note: Ensure arrow settings (like precision line offset) are reapplied on length change
+    update_arrow_settings(obj)
+
 
 def update_arrow_settings(obj):
     """Updates the global visual settings (scale, color, direction) for the dimension assembly."""
@@ -856,6 +894,7 @@ def update_arrow_settings(obj):
     text_s = dim_props.text_scale
     dir_enum = dim_props.direction
     length = dim_props.length
+    line_t = dim_props.line_thickness
     
     direction_map = {
         'X': mathutils.Vector((1, 0, 0)),
@@ -865,22 +904,98 @@ def update_arrow_settings(obj):
         '-Y': mathutils.Vector((0, -1, 0)),
         '-Z': mathutils.Vector((0, 0, -1)),
     }
-    target_vec = direction_map.get(dir_enum, mathutils.Vector((0, 0, 1)))
-    rot_euler = target_vec.to_track_quat('Z', 'Y').to_euler()
 
-    # Update Label (Text) Scale
-    obj.scale = (text_s, text_s, text_s)
-    obj.location.y = dim_props.offset # Offset from line
-
-    # Root of the dimension assembly
+    # Planar Mode / Multi-Axis Alignment
+    target_vec = mathutils.Vector((0.0, 0.0, 0.0))
+    if dim_props.align_x: target_vec.x += 1.0
+    if dim_props.align_nx: target_vec.x -= 1.0
+    if dim_props.align_y: target_vec.y += 1.0
+    if dim_props.align_ny: target_vec.y -= 1.0
+    if dim_props.align_z: target_vec.z += 1.0
+    if dim_props.align_nz: target_vec.z -= 1.0
+    
+    # Root of the assembly
     root = obj.parent
     if root:
-        # Apply Root Scale (This scales both anchors and the line thickness proportionally)
-        root.scale = (arrow_s, arrow_s, arrow_s)
-        root.rotation_euler = rot_euler
+        # Retrieve the original measurement direction
+        if "fcd_dist_vec" in root:
+             orig_z = mathutils.Vector(root["fcd_dist_vec"])
+        else:
+             orig_z = mathutils.Vector((0, 0, 1))
+
+        if target_vec.length > 0.001:
+            target_vec.normalize()
+            # AI Editor Note: Snap the UP Vector (offset axis, Local Y) to the target_vec
+            # while keeping the Measurement Vector (Local Z) pointing exactly at the target.
+            x_axis = target_vec.cross(orig_z)
+            if x_axis.length > 0.001:
+                 x_axis.normalize()
+                 # Recompute strictly orthogonal Y axis derived from X and Z
+                 y_axis = orig_z.cross(x_axis).normalize()
+                 rot_mat = mathutils.Matrix((x_axis, y_axis, orig_z)).transposed()
+                 rot_euler = rot_mat.to_euler()
+            else:
+                 rot_euler = orig_z.to_track_quat('Z', 'Y').to_euler()
+        else:
+            # Default fallback simply tracks Z, leaving Y loosely oriented
+            target_vec = direction_map.get(dir_enum, mathutils.Vector((0, 0, 1)))
+            rot_euler = orig_z.to_track_quat('Z', target_vec).to_euler()
+            
+        # 1. Update Root orientation (only if not manually aligned)
+        if not obj.get("fcd_is_aligned"):
+             root.rotation_euler = rot_euler
         
-    # Re-trigger length update to ensure consistency
-    update_dimension_length(obj)
+        # 2. Update Siblings scales/locations
+        offset = dim_props.offset
+        ext_beyond = dim_props.extension_line
+        
+        for child in root.children:
+            if child.get("fcd_is_dimension_anchor"):
+                child.scale = (arrow_s, arrow_s, arrow_s)
+                child.location.y = offset
+            
+            elif child.get("fcd_is_dimension_line"):
+                # 1:1 Scaling with properties (Base mesh radius is 1.0)
+                # AI Editor Note: Precision Offset - Start the line at the butt of the arrow
+                # to prevent the line from poking through the arrowhead tips.
+                arrow_l = 0.15 * arrow_s
+                child.scale.x = line_t
+                child.scale.y = line_t
+                child.scale.z = max(0.001, length - (arrow_l * 2))
+                child.location.y = offset
+                child.location.z = arrow_l
+                
+            elif child.get("fcd_is_extension_line"):
+                # Extension lines start at arrowhead (offset) and bridge the gap
+                child.scale.x = line_t * 0.8 
+                child.scale.y = line_t * 0.8
+                child.scale.z = offset + ext_beyond
+                child.location.y = offset
+                
+            elif child.get("fcd_is_dimension"): # The Label itself
+                child.scale = (text_s, text_s, text_s)
+                child.location.y = offset + (arrow_s * 0.5) # Dynamic label clearance
+                child.location.z = length / 2
+                
+                # Apply Text Alignment (With Mirroring)
+                align_choice = dim_props.text_alignment
+                if dim_props.flip_text:
+                     # 'Mirror' the alignment physically
+                     align_map = {'LEFT': 'RIGHT', 'RIGHT': 'LEFT', 'CENTER': 'CENTER'}
+                     align_choice = align_map.get(align_choice, 'CENTER')
+                     
+                if hasattr(child.data, "align_x"):
+                    child.data.align_x = align_choice
+                    
+                if dim_props.flip_text:
+                    # Yaw 180 degrees so it is readable from the other side (back face)
+                    child.rotation_euler = (math.radians(90), 0, math.radians(180))
+                else:
+                    child.rotation_euler = (math.radians(90), 0, 0)
+                
+        root.update_tag()
+
+
 
 def build_example_arm(context: bpy.types.Context, scale_factor: float = 1.0):
     """
