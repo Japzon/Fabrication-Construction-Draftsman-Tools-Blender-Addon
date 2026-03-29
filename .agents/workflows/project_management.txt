@@ -107,27 +107,3 @@ To enforce memory safety and maintain structural integrity, all procedural mesh 
 * All internal references must be updated to the new module name to prevent "Inconsistent name mismatch" errors during registration.
 
 8. Current Session Tasks Log (Mandatory)
-- Fixed arrowhead positioning by using 'fcd_is_dimension_anchor' check in update_arrow_settings instead of string name endings.
-- Updated FCD_OT_Add_Dimension tooltip to 'First selected is the static point, second selected is the variable point.'
-- Refined object sequence selection in edit mode and object mode to accurately designate the first selected object as the static anchor and the active/last selected as the variable point.
-- Modified extension line logic in update_arrow_settings to ensure it originates directly from the arrow head tip and is controlled purely by the absolute value of the extension_line property, preventing floating segments when negative values are provided.
-- Added a full XYZ Text Rotation vector property to FCD_PG_Dimension_Props and the UI panel to give users complete control over label orientation.
-- Aligned initial dimension text orientation base with the dimension's extension line offset vector, preserving relative alignment prior to user rotation adjustments.
-- Renamed 'Parametric Toolkit' to 'Procedural Toolkit' and moved its 'Parametric Anchors' section to the newly renamed 'Dimensions & Precision Transforms' panel.
-- Implemented an 'Accurate Scaling' tool within the 'Dimensions & Precision Transforms' panel, allowing users to toggle X/Y/Z axes and set an exact scale value for high-precision modeling.
-- Updated all internal property references and UI identifiers to reflect the new panel nomenclature.
-- Fixed a drawing error in the 'Dimensions & Precision Transforms' panel caused by an invalid icon name ('FOLLOW_PATH' -> 'CON_FOLLOWPATH').
-- Updated the global error reporting prefix from '[URDF Addon]' to '[FCD Addon]' in ui_main.py to reflect the correct brand identity.
-- Refined the 'Display Properties' UI to only show when a dimension object is active, improving workspace organization.
-- Resolved UnboundLocalError in the 'Dimensions & Precision Transforms' panel by properly initializing the Display Properties box before the conditional object check.
-- Extended Parametric Anchor tools (Hook/Marker) to support Object Mode, allowing anchoring of entire objects or origins in addition to vertex-specific hooks.
-- Reorganized the 'Dimensions & Precision Transforms' panel, moving Accurate Scaling below the core dimension generation tools for better hierarchical flow.
-- Upgraded the 'Accurate Scaling' tool to accept absolute distance values (meters, mm, etc.) instead of simple scale factors, based on the object's real-world dimensions.
-- Redesigned the Parametric Anchors UI to be persistent, ensuring tools are always visible regardless of the current selection.
-- Renamed anchor placement operators to 'Start/Stop Hook/Marker Transform Mode' for broader functional clarity.
-- Renamed removal tool to 'Remove Selected Hook/Marker' with a 'Purge selected Hook/Marker' tooltip for better user guidance.
-- Fixed a 'Evaluated mesh is needed' parenting error during Edit Mode dimension generation by implementing a ViewLayer update prior to assembly creation.
-- Finalized UI layout for 'Dimensions & Precision Transforms', ensuring Display Properties and Dimension removal tools appear above the Accurate Scaling sub-panel.
-- Consolidated the Dimension Generator and Display Properties into a single unified sub-panel for a more streamlined workflow.
-- Refined Edit Mode dimension generation to strictly use selected vertices/elements as the static and dynamic points, preventing the assembly from defaulting to the entire object center.
-- Reinforced Edit Mode stability by forcing dependency graph updates before BMesh access, resolving 'Evaluated mesh is needed' errors.
