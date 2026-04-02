@@ -770,14 +770,22 @@ def generate_smart_dimension_parametric(context, p1, p2, name="Dimension", paren
     root_dim_props.offset = v_offset
     root_dim_props.line_thickness = v_thick
     
-    # REAL-TIME SYNC: If a slave object is provided (parent_b), add a
-    # COPY_LOCATION constraint so the end anchor follows it.
-    # Guard against None to prevent AttributeError on BBox-only dimensions.
+    # REAL-TIME SYNC: Establish a master-slave hierarchy.
+    # The dimension is the MASTER. Both hooks (meshes) are pulled/pushed 
+    # as the dimension moves or changes length by constraining them to our anchors.
+    if parent_a and parent_a[0]:
+        start_mesh_hook = parent_a[0]
+        con_a = start_mesh_hook.constraints.new('COPY_LOCATION')
+        con_a.target = aa_master
+        con_a.use_offset = False
+        start_mesh_hook["fcd_is_dimension_hook"] = "START"
+        
     if parent_b and parent_b[0]:
         target_mesh_hook = parent_b[0]
-        con = target_mesh_hook.constraints.new('COPY_LOCATION')
-        con.target = ab_master
-        con.use_offset = False
+        con_b = target_mesh_hook.constraints.new('COPY_LOCATION')
+        con_b.target = ab_master
+        con_b.use_offset = False
+        target_mesh_hook["fcd_is_dimension_hook"] = "END"
     
     # Pass 4: Final visual pass
     if hasattr(core, 'update_arrow_settings'):
@@ -800,51 +808,10 @@ def generate_smart_dimension_parametric(context, p1, p2, name="Dimension", paren
               # Make them stand out in Solid mode
               o.color = (0.0, 0.4, 1.0, 1.0) # Bright Blue
     
-    if parent_a:
-        obj_a, type_a, index_a = parent_a
-        # AI Editor Note: Pre-parenting sync
-        if obj_a.type == 'MESH':
-             obj_a.data.update()
-             # We must force Blender to see the 'evaluated' version for parenting
-             dg = context.evaluated_depsgraph_get()
-             obj_eval = obj_a.evaluated_get(dg)
-        
-        # FINAL ATOMIC PARENTING: Satisfy the 4.5 'give_parvert' solver
-        # 1. First Pass: Lock in global position
-        dg = context.evaluated_depsgraph_get()
-        dg.update()
-        root.matrix_world = old_mat.copy()
-        context.view_layer.update()
-        
-        # 2. Assign Parent
-        root.parent = obj_a
-        
-        # MANDATORY SYNC: Blender 4.5+ requires view_layer update to resolve matrix_parent_inverse 
-        # before we can safely restore world matrices.
-        context.view_layer.update() 
-        dg.update()
-        
-        if type_a == 'VERTEX':
-             # 3. Mode Selection
-             root.parent_type = 'VERTEX'
-             # 4. Mandatory Sync between Type set and Indices set
-             dg.update()
-             context.view_layer.update()
-             
-             root.parent_vertices[0] = index_a
-             root.parent_vertices[1] = index_a
-             root.parent_vertices[2] = index_a
-             
-        # Restore precise world transformation
-        # matrix_parent_inverse MUST be calculated against the evaluated armature/mesh matrix
-        root.matrix_parent_inverse = obj_a.matrix_world.inverted()
-        context.view_layer.update() # settlement
-        
-        root.matrix_world = old_mat.copy()
-        
-        # Pass 4: Final verification update
-        context.view_layer.update()
-        dg.update()
+    # AI Editor Note: Remove dependency cycle. Root MUST NOT be parented 
+    # back to any of the hooks it is constraining. The dimension is now independent.
+    root.matrix_world = old_mat.copy()
+    context.view_layer.update() 
             
     # Parent the second object/element to the EndHook (Conditional)
     if parent_b:

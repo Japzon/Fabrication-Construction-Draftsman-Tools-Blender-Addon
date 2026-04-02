@@ -1186,140 +1186,190 @@ def update_arrow_settings(obj):
     sync_dimension_flipping(root)
 
 
+def _bake_and_release_hook(hook_empty: bpy.types.Object) -> None:
+    """Inline bake utility for the flip protocol.
+    
+    Applies the current deformation of the mesh as its new rest pose, re-creates
+    the Hook modifier so parametric control is maintained, and removes the
+    COPY_LOCATION constraint from the hook Empty so it no longer follows any anchor.
+    This 'releases' the hook from the dimension's constraint chain without moving anything.
+    """
+    # 1. Find all meshes driven by this hook Empty
+    meshes_to_bake = []
+    for scene_obj in bpy.data.objects:
+        if scene_obj.type != 'MESH': continue
+        for mod in scene_obj.modifiers:
+            if mod.type == 'HOOK' and mod.object == hook_empty:
+                meshes_to_bake.append((scene_obj, mod.name, {
+                    'vertex_group': mod.vertex_group,
+                    'strength':     mod.strength,
+                    'falloff_type': mod.falloff_type,
+                    'falloff_radius': mod.falloff_radius,
+                    'uniform':      mod.use_falloff_uniform,
+                }))
+    
+    # 2. Bake each linked mesh's Hook modifier (apply → rebind at new rest state)
+    prev_active = bpy.context.view_layer.objects.active
+    for mesh_obj, mod_name, mod_data in meshes_to_bake:
+        try:
+            bpy.context.view_layer.objects.active = mesh_obj
+            bpy.ops.object.modifier_apply(modifier=mod_name)
+            # Re-create the hook modifier at the new rest pose
+            new_mod = mesh_obj.modifiers.new(name=mod_name, type='HOOK')
+            new_mod.object = hook_empty
+            if mod_data['vertex_group']:
+                new_mod.vertex_group = mod_data['vertex_group']
+            new_mod.strength      = mod_data['strength']
+            new_mod.falloff_type  = mod_data['falloff_type']
+            new_mod.falloff_radius = mod_data['falloff_radius']
+            new_mod.use_falloff_uniform = mod_data['uniform']
+            # Reset modifier to bind at current position (new rest pose)
+            try:
+                bpy.ops.object.mode_set(mode='EDIT')
+                bpy.ops.mesh.select_all(action='SELECT')
+                bpy.ops.object.hook_reset(modifier=new_mod.name)
+                bpy.ops.object.mode_set(mode='OBJECT')
+            except: pass
+        except Exception as e:
+            print(f"[FCD] Flip bake failed on {mesh_obj.name}: {e}")
+    
+    if prev_active:
+        bpy.context.view_layer.objects.active = prev_active
+    
+    # 3. Apply visual transform on the Empty itself (bake constraint result → location)
+    try:
+        world_mat = hook_empty.matrix_world.copy()
+        # Remove ALL COPY_LOCATION constraints that target dimension anchors
+        cons_to_remove = [c for c in hook_empty.constraints
+                          if c.type == 'COPY_LOCATION' and c.target
+                          and c.target.get("fcd_is_dimension_anchor")]
+        for con in cons_to_remove:
+            hook_empty.constraints.remove(con)
+        # Apply the baked world position as the hook Empty's own location
+        hook_empty.matrix_world = world_mat
+    except Exception as e:
+        print(f"[FCD] Flip: hook release failed on {hook_empty.name}: {e}")
+
+
 def sync_dimension_flipping(obj):
-    """Event-triggered role swap to ensure stability."""
+    """True geometric role swap for Flip Target Roles with dual-constraint re-binding.
+    
+    Swaps which selected point is p1 (master/start) vs p2 (slave/end).
+    1. Snapshot current hook/mesh state.
+    2. Bake current pose to mesh geometry and release constraints.
+    3. Reposition Root (origin swap).
+    4. Re-establish COPY_LOCATION constraints so hooks follow our new orientation.
+    """
     global _dim_update_guard
     if _dim_update_guard: return
     
-    # Resolve the hub of the assembly (Root) safely
-    root = None
-    if isinstance(obj, bpy.types.Object):
-         root = obj if obj.get("fcd_dim_root_marker") else obj.get("fcd_dim_root")
-         if not root:
-              # Fallback to parent if called on a component
-              root = obj.parent if not obj.get("fcd_dim_root_marker") else obj
-    
+    root = get_dimension_root(obj)
     if not root: return
     
-    dim_props = root.fcd_pg_dim_props
+    host = get_dimension_host(obj)
+    if not host: return
+    host_props = host.fcd_pg_dim_props
     
+    # CHANGE-DETECTION GUARD: Only fire when is_flipped actually changes
+    # Use a two-stage guard: 
+    # 1. On first run, baseline the state and exit without swapping.
+    # 2. On subsequent runs, exit only if the state is unchanged.
+    last_flipped = root.get("_fcd_last_flipped_state", None)
+    current_flipped = host_props.is_flipped
+    
+    if last_flipped is None:
+        root["_fcd_last_flipped_state"] = int(current_flipped)
+        return  # Initial baseline setup: record state and exit WITHOUT swapping
+        
+    if bool(last_flipped) == bool(current_flipped):
+        return  # State hasn't changed since last swap
+    
+    root["_fcd_last_flipped_state"] = int(current_flipped)
+    
+    # 1. Store A/B participants before they are unlinked
     obj_a = root.get("fcd_parent_obj")
     obj_b = root.get("fcd_slave_obj")
-    if not obj_a or not obj_b: return
     
-    # 1. Atomic Change Detection: Only flip if the state has changed
-    # Logic: The parent of the 'root' corresponds to the 'is_flipped' state.
-    # If is_flipped=False, parent should be obj_a. 
-    # If is_flipped=True, parent should be obj_b.
-    current_parent = root.parent
-    target_parent = obj_b if dim_props.is_flipped else obj_a
-    target_slave = obj_a if dim_props.is_flipped else obj_b
+    # Snapshot world positions BEFORE any changes
+    try:
+        bpy.context.view_layer.update()
+        start_anchor = next((c for c in root.children if c.get("fcd_anchor_type") == "START"), None)
+        end_anchor   = next((c for c in root.children if c.get("fcd_anchor_type") == "END"),   None)
+        if not start_anchor or not end_anchor: return
+        
+        old_p1_world = start_anchor.matrix_world.translation.copy()
+        old_p2_world = end_anchor.matrix_world.translation.copy()
+    except: return
     
-    if current_parent == target_parent:
-         # No role swap needed - this update was likely triggered by arrow_scale/etc
-         return
+    # 2. PRE-FLIP BAKE: Release participants from current anchors
+    hooks_to_release = []
+    if obj_a: hooks_to_release.append(obj_a)
+    if obj_b: hooks_to_release.append(obj_b)
     
-    # D) RECONSTRUCTIVE FLIP (Delayed/Atomic for Memory Safety)
-    # Logic: To avoid EXCEPTION_ACCESS_VIOLATION in Blender 4.5+, we must not 
-    # delete the object currently triggering the property update or its parents 
-    # inside the update loop. We queue the reconstruction for a separate main-loop pass.
+    for hook in hooks_to_release:
+        if isinstance(hook, bpy.types.Object):
+            _bake_and_release_hook(hook)
     
-    # 1. Store IDs and Configuration before the delay to avoid stale pointers
-    config = {
-         "arrow_scale": dim_props.arrow_scale,
-         "text_scale": dim_props.text_scale,
-         "line_thickness": dim_props.line_thickness,
-         "offset": dim_props.offset,
-         "use_extension_lines": dim_props.use_extension_lines,
-         "text_color": dim_props.text_color[:],
-         "unit_display": dim_props.unit_display,
-         "text_alignment": dim_props.text_alignment,
-         "align_x": dim_props.align_x, "align_nx": dim_props.align_nx,
-         "align_y": dim_props.align_y, "align_ny": dim_props.align_ny,
-         "align_z": dim_props.align_z, "align_nz": dim_props.align_nz,
-    }
+    # 3. REPOSITION ROOT: Swap p1/p2 world vectors
+    # We always move origin to the new 'start' side
+    new_p1 = old_p2_world
+    new_p2 = old_p1_world
     
-    root_name = root.name
-    p_name = obj_a.name
-    s_name = obj_b.name
+    direction = new_p2 - new_p1
+    new_length = direction.length
+    if new_length < 0.0001: return
     
-    def delayed_rebuild():
-         global _dim_update_guard
-         try:
-              # Guard context
-              if not bpy.context or not bpy.context.view_layer: 
-                   _dim_update_guard = False
-                   return
-              
-              # A) PRE-FLIP BAKE: Finalize poses on current participants
-              obj_p = bpy.data.objects.get(p_name)
-              obj_s = bpy.data.objects.get(s_name)
-              if not obj_p or not obj_s:
-                   _dim_update_guard = False
-                   return
-              
-              prev_mode = bpy.context.mode
-              if prev_mode != 'OBJECT': bpy.ops.object.mode_set(mode='OBJECT')
-              
-              for p_obj in [obj_p, obj_s]:
-                   bpy.ops.object.select_all(action='DESELECT')
-                   p_obj.select_set(True)
-                   bpy.context.view_layer.objects.active = p_obj
-                   try: 
-                        # Use override to ensure operator context stability inside timer
-                        bpy.ops.fcd.bake_anchor()
-                   except: pass
-              
-              # B) PURGE OLD ASSEMBLY
-              old_root = bpy.data.objects.get(root_name)
-              if old_root:
-                   to_del = [old_root] + [c for c in old_root.children]
-                   for o in to_del:
-                        # Clean unlinking minimizes access violations during memory free
-                        for col in o.users_collection: col.objects.unlink(o)
-                        try: bpy.data.objects.remove(o, do_unlink=True)
-                        except: pass
-              
-              # C) REBUILD: Call procedural generator with fresh coordinate frames
-              from . import generators
-              new_dim = generators.generate_smart_dimension_parametric(
-                   bpy.context, 
-                   obj_p.matrix_world.translation, 
-                   obj_s.matrix_world.translation,
-                   name="FCD_Dimension",
-                   parent_a=(obj_p, 'OBJECT', 0),
-                   parent_b=(obj_s, 'OBJECT', 0)
-              )
-              
-              if new_dim:
-                   new_props = new_dim.fcd_pg_dim_props
-                   # Restore visual configuration across the reconstructive gap
-                   for key, val in config.items():
-                        try: setattr(new_props, key, val)
-                        except: pass
-                   # Reset flip state on the new assembly to avoid recursion
-                   # Selection Focus: keeping properties open
-                   if context.view_layer:
-                        bpy.ops.object.select_all(action="DESELECT")
-                        new_dim.select_set(True)
-                        context.view_layer.objects.active = new_dim
-                        context.view_layer.update()
-                        for area in bpy.context.screen.areas:
-                             if area.type in ["PROPERTIES", "VIEW_3D"]: area.tag_redraw()
-                   
-              if prev_mode != 'OBJECT': bpy.ops.object.mode_set(mode=prev_mode)
-                   
-         except Exception as e:
-              print(f"[FCD] Reconstructive Flip Failure: {e}")
-         finally:
-              _dim_update_guard = False
-         return None
-
-    # Defer execution to clear the current property update stack
-    bpy.app.timers.register(delayed_rebuild, first_interval=0.01)
-    
-    # Global guard to prevent the property dispatcher from re-triggering during the delete
-    _dim_update_guard = True 
+    _dim_update_guard = True
+    try:
+        # Reposition root Empty via world matrix to avoid eval-frame conflicts
+        z_axis = direction.normalized()
+        rot_quat = z_axis.to_track_quat('Z', 'Y')
+        rot_mat = rot_quat.to_matrix().to_4x4()
+        rot_mat.translation = new_p1
+        root.matrix_world = rot_mat
+        
+        # END visual anchor moves to local z=length
+        end_anchor.location = (0.0, 0.0, new_length)
+        
+        # 4. RE-ESTABLISH CONSTRAINTS (Dimension Master -> Hooks)
+        # Flip Role logic: 
+        # If is_flipped = True: root is at old end (P2). 
+        #   Hook B is at P2 (start / root origin). Hook A is at P1 (end / z=length).
+        if obj_a and obj_b:
+            # Re-bind logic
+            # New P1/Root position is at 'new_p1' (which was old_p2).
+            # So Hook B (at old_p2) should follow the START anchor (root).
+            # Hook A (at old_p1) should follow the END anchor (z=length).
+            
+            # Hook B -> START anchor
+            con_b = obj_b.constraints.new('COPY_LOCATION')
+            con_b.target = start_anchor
+            con_b.use_offset = False
+            obj_b["fcd_is_dimension_hook"] = "START"
+            
+            # Hook A -> END anchor
+            con_a = obj_a.constraints.new('COPY_LOCATION')
+            con_a.target = end_anchor
+            con_a.use_offset = False
+            obj_a["fcd_is_dimension_hook"] = "END"
+            
+            # Update participants on root (Swapped Role)
+            # This is important for the sync handler/layout to know who is who.
+            # We don't swap the 'obj' variables, we just re-label their roles.
+            root["fcd_parent_obj"] = obj_b
+            root["fcd_slave_obj"] = obj_a
+            
+        # Update length
+        host_props.length = new_length
+        root.fcd_pg_dim_props.length = new_length
+        
+        update_arrow_settings(root)
+        root.update_tag()
+        
+    except Exception as e:
+        print(f"[FCD] Flip Role Swap Error: {e}")
+    finally:
+        _dim_update_guard = False
 
 def build_example_arm(context: bpy.types.Context, scale_factor: float = 1.0):
     """
