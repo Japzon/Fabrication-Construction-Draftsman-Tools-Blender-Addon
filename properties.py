@@ -187,6 +187,38 @@ class FCD_PG_Dimension_Props(bpy.types.PropertyGroup):
     # Hidden Persistent State (For Offset Coherence)
     target_x: bpy.props.FloatProperty(name="Target Transverse X", default=0.0)
     target_y: bpy.props.FloatProperty(name="Target Transverse Y", default=0.0)
+    font_name: bpy.props.EnumProperty(
+        name="Font Type",
+        items=[
+            ('DEFAULT', "Default Blender Font", ""),
+            # Geometric & Modern
+            ('FUTURA', "Futura", "Geometric sans-serif favored for its modern look"),
+            ('HELVETICA', "Helvetica / Neue", "Known for neutrality and high readability"),
+            ('DIN', "DIN 1451", "Standard German technical font for engineering"),
+            ('CENTURY', "Century Gothic", "Modern, wide-set, and minimalist"),
+            ('ARIAL', "Arial / Narrow", "Standard construction document font"),
+            ('GOTHAM', "Gotham", "Inspired by architectural signage"),
+            ('AVENIR', "Avenir", "Geometric style with humanistic proportions"),
+            ('ROBOTO', "Roboto", "Modern digital-first font"),
+            ('CONSOLAS', "Consolas", "Technical explanatory text font"),
+            # CAD-Specific & Technical
+            ('SIMPLEX', "Simplex", "Clean, single-line CAD font"),
+            ('ARCHITXT', "Architxt", "Handwriting-style technical font"),
+            ('ROMANS', "RomanS", "Professional legible CAD font"),
+            ('CITY', "City Blueprint", "Standard CAD font with technical feel"),
+            ('ISO', "ISOCPEUR", "ISO 3098 standard technical font"),
+            ('STYLUS', "Stylus BT", "Hand-lettered CAD appearance"),
+            # Portfolio & Presentation
+            ('ARCH_DAUGHTER', "Architect's Daughter", "Mimics hand-lettering"),
+            ('POPPINS', "Poppins", "Bold headers font"),
+            ('QUICKSAND', "Quicksand", "Minimalist captions font"),
+            ('BAUHAUS', "Bauhaus 93", "Decorative typeface for titles"),
+            ('SPACE', "Space Grotesk", "High-impact headers"),
+            ('MONTSERRAT', "Montserrat", "Design-centric branding font")
+        ],
+        default='DEFAULT',
+        update=update_arrow_settings_timer
+    )
     text_alignment: bpy.props.EnumProperty(
         name="Text Alignment",
         items=[('LEFT', "Left", ""), ('CENTER', "Center", ""), ('RIGHT', "Right", "")],

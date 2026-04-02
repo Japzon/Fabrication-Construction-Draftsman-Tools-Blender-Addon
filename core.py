@@ -1144,20 +1144,78 @@ def update_arrow_settings(obj):
             child.scale = (safe_divide(text_s, rw_scale.x), safe_divide(text_s, rw_scale.y), safe_divide(text_s, rw_scale.z))
             # The label should also move with the slanted offsets while staying centered
             text_clearance = move_vec.normalized() * (arrow_s * 0.2)
+            # Font Loading Logic (Architecture & Engineering Standards)
+            font_path = None
+            if dim_props.font_name != 'DEFAULT':
+                import platform, os
+                system = platform.system()
+                # Windows-centric discovery map (User is on Windows)
+                font_map = {
+                    'ARIAL':    ('arial.ttf', 'arialni.ttf', 'ariblk.ttf', 'arial.ttf'),
+                    'ROBOTO':   ('Roboto-Regular.ttf', 'roboto.ttf', 'Roboto.ttf'),
+                    'CONSOLAS': ('consola.ttf', 'Consola.ttf'),
+                    'DIN':      ('din.ttf', 'DIN.ttf', 'Dina.ttf'),
+                    'BAUHAUS':  ('bauhaus.ttf', 'BAUHS93.TTF', 'Bauhaus.ttf'),
+                    'HELVETICA': ('helvetica.ttf', 'Helvetica.ttf', 'arial.ttf'),
+                    'FUTURA':    ('futura.ttf', 'Futura.ttf'),
+                    'CENTURY':   ('centgoth.ttf', 'CenturyGothic.ttf', 'CENTURY.TTF', 'Century.ttf'),
+                    'GOTHAM':    ('gotham.ttf', 'Gotham.ttf'),
+                }
+                
+                search_paths = []
+                if system == 'Windows': 
+                    search_paths = [
+                        os.path.join(os.environ.get('WINDIR', 'C:\\Windows'), 'Fonts'),
+                        os.path.join(os.environ.get('LOCALAPPDATA', ''), 'Microsoft\\Windows\\Fonts')
+                    ]
+                elif system == 'Darwin': search_paths = ['/Library/Fonts', '/System/Library/Fonts']
+                else: search_paths = ['/usr/share/fonts', '/usr/local/share/fonts']
+                
+                f_files = font_map.get(dim_props.font_name, (f"{dim_props.font_name.lower()}.ttf",))
+                for s_path in search_paths:
+                    if not os.path.exists(s_path): continue
+                    for f_file in f_files:
+                        test_p = os.path.join(s_path, f_file)
+                        if os.path.exists(test_p):
+                            font_path = test_p
+                            break
+                    if font_path: break
+            
+            # Apply Font
+            if font_path:
+                try:
+                    f_name_key = os.path.basename(font_path)
+                    f_data = bpy.data.fonts.get(f_name_key)
+                    if not f_data:
+                        f_data = bpy.data.fonts.load(font_path)
+                    child.data.font = f_data
+                except Exception as e:
+                    # Fallback to Arial if standard fails
+                    print(f"[FCD] Font Load Failed ({dim_props.font_name}): {e}")
+                    try:
+                        arial_p = "C:\\Windows\\Fonts\\arial.ttf"
+                        if os.path.exists(arial_p):
+                             child.data.font = bpy.data.fonts.load(arial_p)
+                    except: pass
+            
+            # AI Editor Note: Flip Text Mirroring
+            # Stay at original location but 'face the other way'.
+            # Solution: Rotate 180 on Y (Mirror Reflector) to maintain upright baseline.
+            flip_rot = mathutils.Euler((0, 0, 0))
+            if dim_props.flip_text:
+                # Rotate 180 around Local Y (Horizontal Reflection)
+                # This mirrors the text direction while keeping it upright.
+                flip_rot = mathutils.Euler((0, math.pi, 0))
+                
             child.location = move_vec + text_clearance
             child.location.z += length / 2
             
             if hasattr(child.data, "align_x"):
                  child.data.align_x = dim_props.text_alignment
             if hasattr(child.data, "align_y"):
-                 child.data.align_y = 'CENTER' # Anchor text to its midline for rotation stability
+                 child.data.align_y = 'CENTER'
             
             # Text Orientation System (Parallel Alignment).
-            # Logic: Text 'X' (reading path) aligns with Dimension 'Z' (assembly track).
-            # Logic: Text 'Y' (height/up) aligns with Offset Direction (outward). 
-            # Logic: Text 'Z' (forward) aligns with Cross Product (depth towards viewer).
-            # This ensures text 'follows' the drafting path like typical architectural notation.
-            
             vec_x = mathutils.Vector((0, 0, 1)) # Assembly direction
             vec_y = offset_local_dir.normalized()
             vec_z = vec_x.cross(vec_y).normalized()
@@ -1166,12 +1224,10 @@ def update_arrow_settings(obj):
             m = mathutils.Matrix((vec_x, vec_y, vec_z)).transposed()
             base_rot = m.to_euler()
             
-            if dim_props.flip_text:
-                base_rot.rotate_axis('X', math.pi)
-            
-            # Apply user-defined Euler rotation ('XYZ' order) on top of the drafting frame
+            # Apply user-defined Euler rotation + flip correctly
             user_euler = mathutils.Euler(dim_props.text_rotation, 'XYZ')
-            child.rotation_euler = (base_rot.to_matrix() @ user_euler.to_matrix()).to_euler()
+            combined_rot = (base_rot.to_matrix() @ flip_rot.to_matrix() @ user_euler.to_matrix()).to_euler()
+            child.rotation_euler = combined_rot
             
             # Sync material & visibility
             mat = child.active_material

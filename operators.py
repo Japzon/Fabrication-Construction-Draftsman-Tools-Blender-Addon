@@ -2782,15 +2782,82 @@ class FCD_OT_Remove_Dimension(bpy.types.Operator):
              bpy.data.objects.remove(host, do_unlink=True)
              return {'FINISHED'}
 
+        # AI Editor Note: PRE-DELETION BAKE (Requirement)
+        # Directly apply the current deformation as the rest pose for all driven meshes
+        # before we nuke the anchors and constraints.
+        participants = []
+        if root.get("fcd_parent_obj"): participants.append(root["fcd_parent_obj"])
+        if root.get("fcd_slave_obj"):  participants.append(root["fcd_slave_obj"])
+        
+        # Ensure Object Mode for modifier operations
+        if context.mode != 'OBJECT':
+             bpy.ops.object.mode_set(mode='OBJECT')
+
+        for hook_empty in participants:
+            if not (hook_empty and hook_empty.name in bpy.data.objects): continue
+            
+            # --- PHASE 1: Bake Hook World Matrix ---
+            # The hook might be constrained to an anchor we are about to delete.
+            # We must lock its current global position.
+            mw = hook_empty.matrix_world.copy()
+            for con in hook_empty.constraints:
+                if con.type == 'COPY_LOCATION':
+                    hook_empty.constraints.remove(con)
+            hook_empty.matrix_world = mw
+            
+            # --- PHASE 2: Bake Mesh Geometry ---
+            # Find all meshes driven by this hook
+            for scene_obj in bpy.data.objects:
+                if scene_obj.type != 'MESH': continue
+                for mod in scene_obj.modifiers:
+                    if mod.type == 'HOOK' and mod.object == hook_empty:
+                        # Logic from FCD_OT_BakeAnchor: Apply → Re-create → Reset
+                        mod_data = {
+                            'name': mod.name,
+                            'vertex_group': mod.vertex_group,
+                            'strength': mod.strength,
+                            'falloff_type': mod.falloff_type,
+                            'falloff_radius': mod.falloff_radius,
+                            'uniform': mod.use_falloff_uniform,
+                        }
+                        
+                        try:
+                            # 1. SETUP CONTEXT: Must be active and selected for apply
+                            context.view_layer.objects.active = scene_obj
+                            scene_obj.select_set(True)
+                            
+                            # 2. APPLY: Locks in current pose
+                            bpy.ops.object.modifier_apply(modifier=mod.name)
+                            
+                            # 3. RE-BIND: Re-create the hook to maintain parametric control over NEW rest pose
+                            new_mod = scene_obj.modifiers.new(name=mod_data['name'], type='HOOK')
+                            new_mod.object = hook_empty
+                            if mod_data['vertex_group']: new_mod.vertex_group = mod_data['vertex_group']
+                            new_mod.strength = mod_data['strength']
+                            new_mod.falloff_type = mod_data['falloff_type']
+                            new_mod.falloff_radius = mod_data['falloff_radius']
+                            new_mod.use_falloff_uniform = mod_data['uniform']
+                            
+                            # Rebind to current world state (Edit Mode Reset)
+                            bpy.ops.object.mode_set(mode='EDIT')
+                            bpy.ops.mesh.select_all(action='SELECT')
+                            bpy.ops.object.hook_reset(modifier=new_mod.name)
+                            bpy.ops.object.mode_set(mode='OBJECT')
+                            
+                        except Exception as e:
+                            print(f"[FCD] Pre-removal bake failed on {scene_obj.name}: {e}")
+                        finally:
+                            # Cleanup selection for next mesh
+                            scene_obj.select_set(False)
+
         # Collect all components (children of the same root)
         to_delete = {root}
         for child in root.children:
-            to_delete.add(child)
-        
+            if child: to_delete.add(child)
+
         # AI Editor Note: SAFETY CHECK. 
         # If any of these dimension parts are parents to other objects (Hooks), 
         # we must unparent the victims with 'KEEP_TRANSFORM' before deletion.
-        # This prevents the machine parts from snapping to the world center.
         all_objs = list(bpy.data.objects)
         for parent_obj in to_delete:
             if not parent_obj: continue
@@ -2960,7 +3027,8 @@ class FCD_OT_Add_Dimension(bpy.types.Operator):
             parent_a, parent_b = (None, 'OBJECT', 0), (None, 'OBJECT', 0)
 
             sel = context.selected_objects
-            valid_sel = [o for o in sel if not o.get("fcd_is_dimension_anchor") and not o.get("fcd_is_dimension")]
+            # Filter: Exclude dimension internals (text/arrows/anchors), but INCLUDE parametric hooks (fcd_anchor)
+            valid_sel = [o for o in sel if not o.get("fcd_is_dimension") and not o.get("fcd_is_dimension_anchor")]
 
             if len(valid_sel) >= 2:
                 # Identification: Active is the dynamic end (p2), Other is start (p1)
@@ -2976,9 +3044,21 @@ class FCD_OT_Add_Dimension(bpy.types.Operator):
                 p1 = (p1_v.x, p1_v.y, p1_v.z)
                 p2 = (p2_v.x, p2_v.y, p2_v.z)
                 
-                # --- Attachment Phase (Stable Anchor Generation) ---
-                h1 = create_hook_anchor(context, o1, [v.index for v in o1.data.vertices], name_prefix="Hook_Dim_Obj")
-                h2 = create_hook_anchor(context, o2, [v.index for v in o2.data.vertices], name_prefix="Hook_Dim_Obj")
+                # --- Attachment Phase (Stable Anchor Identification or Generation) ---
+                # Strategy: If the object is ALREADY a hook, use it. Otherwise, generate one.
+                h1, h2 = None, None
+                
+                # Identify Target 1 (Start)
+                if o1.get("fcd_anchor") or o1.get("fcd_is_dimension_hook"):
+                    h1 = o1
+                elif o1.type == 'MESH':
+                    h1 = create_hook_anchor(context, o1, [v.index for v in o1.data.vertices], name_prefix="Hook_Dim_Obj")
+                
+                # Identify Target 2 (End)
+                if o2.get("fcd_anchor") or o2.get("fcd_is_dimension_hook"):
+                    h2 = o2
+                elif o2.type == 'MESH':
+                    h2 = create_hook_anchor(context, o2, [v.index for v in o2.data.vertices], name_prefix="Hook_Dim_Obj")
                 
                 if h1 and h2:
                     parent_a = (h1, 'OBJECT', 0)

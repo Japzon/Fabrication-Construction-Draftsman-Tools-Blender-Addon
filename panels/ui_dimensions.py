@@ -116,6 +116,8 @@ class FCD_PT_Dimensions_And_Precision_Transforms:
                 col.prop(dim_props, "is_flipped", text="Flip Target Roles")
                 col.prop(dim_props, "use_extension_lines", text="Use Extension Lines")
                 col.prop(dim_props, "text_color", text="Label Color")
+                # Architecture and Engineering fonts feature
+                col.prop(dim_props, "font_name", text="Standard Font")
                 col.prop(dim_props, "flip_text", text="Flip Text")
                 col.prop(dim_props, "text_rotation", text="Text Rotation")
                 col.prop(dim_props, "unit_display", text="Units")
