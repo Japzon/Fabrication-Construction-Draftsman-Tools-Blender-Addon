@@ -1,5 +1,5 @@
 Fabrication & Construction Draftsman Tools Blender Addon - AI Agent Update Workflow
-Last Update Verification: April 01, 2026 - 12:31 PM
+Last Update Verification: April 02, 2026 - 08:27 AM
 
 This workflow is the absolute source of truth for AI agents interacting with this repository: https://github.com/Japzon/Fabrication-Construction-Draftsman-Tools-Blender-Addon.git
 Follow these exact, descriptive steps meticulously to robustly update or create new features, preserving the addon's unique framework and preventing major structural or memory errors across future Blender 4.5.6 LTS updates.
@@ -110,6 +110,13 @@ To enforce memory safety and maintain structural integrity, all procedural mesh 
 * All internal references must be updated to the new module name to prevent "Inconsistent name mismatch" errors during registration.
 
 8. Current Session Tasks Log
-* [VERIFIED - FINAL] Parametric Anchor Mode Stability: Implemented absolute mode restoration checking for "EDIT" substring in the `finally` block of `operators.py`.
-* [VERIFIED] Added mandatory `[FCD v1.0.4]` status bar prefix to operators.
-* [VERIFIED] Suppression of 'Missing Add-ons' Alert: Updated `dev_tool.py` and `_dev/cleanup_addons.py` to recursively purge the GitHub-appended `-main` and `-master` variations of the addon from the registry.
+* [VERIFIED] Drafting Orthogonality: Enforced zero-Z offset vectors and orthogonal scaling to ensure legs remain strictly academic/technical in all offset directions.
+* [VERIFIED] Persistent UI Sidebar: Refined `get_dimension_host` with robust name-matching to ensure properties persist when selecting any measurement participant.
+* [VERIFIED] Atomic Flip Protocol: Implemented multi-stage swap (Disable -> Reparent -> Bake -> Rebind) to guarantee 100% world-space placement isolation.
+* [VERIFIED] Dimension Root Matrix + Upside-Down + Mini-Form Triple Fix (generators.py): Standardized orientation basis and corrected arrow/label rotations. Added p1->p2 matrix tracking.
+* [VERIFIED] Properties & Preferences Sync: Resolved spawning and sidebar update bugs.
+* [VERIFIED] Text Alignment: Implemented native font alignment (Left/Center/Right) with centered label positioning.
+* [VERIFIED] Auto Size components: Replaced real-time toggle with a one-click operator and an 'Auto-Scale on Spawn' global preference to prevent processing overhead and crashes.
+* [VERIFIED] Absolute Drafting Units: Ensured full-length lines and scale-compensated offsets for parented assemblies.
+* [VERIFIED] Role Swap Stability: Fixed the `is_flipped` state-reset bug in the reconstructive flip protocol.
+

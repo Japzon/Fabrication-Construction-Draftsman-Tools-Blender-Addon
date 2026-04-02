@@ -37,9 +37,8 @@ _joint_editor_update_guard = False
 _last_active_bone_name = None
 _update_gizmo_guard = False
 _local_cursor_update_guard = False
-
-#   PART 0: UI UPDATES & COLLAPSE HELPER
-# ------------------------------------------------------------------------
+_dim_timer_queued = False
+_dim_update_guard = False
 
 def update_panel_collapse(self, context):
     """Callback for all panel visibility properties to support Auto-Collapse"""
@@ -600,6 +599,33 @@ def get_asset_libraries(self, context):
             items.append((lib.name, lib.name, lib.path))
     return items
 
+def get_or_create_arrow_mesh():
+    """Returns a reusable conical arrowhead mesh."""
+    mesh_name = "FCD_Arrow_Mesh"
+    if mesh_name in bpy.data.meshes:
+        return bpy.data.meshes[mesh_name]
+        
+    mesh = bpy.data.meshes.new(mesh_name)
+    # Simple cone geometry (Z-up)
+    verts = [
+        (0, 0, 0),        # Tip (0)
+        (0.05, 0, -0.15), # Base Circle
+        (0.035, 0.035, -0.15),
+        (0, 0.05, -0.15),
+        (-0.035, 0.035, -0.15),
+        (-0.05, 0, -0.15),
+        (-0.035, -0.035, -0.15),
+        (0, -0.05, -0.15),
+        (0.035, -0.035, -0.15),
+    ]
+    # Faces: the tip-to-base triangles and the bottom circle
+    faces = [(0, 1, 2), (0, 2, 3), (0, 3, 4), (0, 4, 5), (0, 5, 6), (0, 6, 7), (0, 7, 8), (0, 8, 1),
+             (1, 8, 7, 6, 5, 4, 3, 2)]
+    
+    mesh.from_pydata(verts, [], faces)
+    mesh.update()
+    return mesh
+
 def update_category_enum(self: bpy.types.Scene, context: bpy.types.Context) -> None:
     """
     Update callback for the parametric part category dropdown.
@@ -805,10 +831,24 @@ def get_or_create_text_material(target_obj):
     if mat.use_nodes and mat.node_tree:
         bsdf = mat.node_tree.nodes.get("Principled BSDF")
         if bsdf:
+            # AI Editor Note: High-Legibility Draftsman Display
+            # Use pure black by default, maximum roughness and zero metallic for non-glossy appearance.
             bsdf.inputs['Base Color'].default_value = color
+            bsdf.inputs['Metallic'].default_value = 0.0
+            bsdf.inputs['Roughness'].default_value = 1.0
+            
+            # Specular handling (Blender 4.0+ uses Specular IOR or weight)
+            if 'Specular' in bsdf.inputs:
+                bsdf.inputs['Specular'].default_value = 0.0
+            if 'Specular IOR Level' in bsdf.inputs:
+                bsdf.inputs['Specular IOR Level'].default_value = 0.0
+
+            # Ensure visibility in Solid mode via Object Color sync.
+            # We set a small emission to keep it crisp in Rendered mode without it being a light source.
             bsdf.inputs['Emission Color'].default_value = color
-            bsdf.inputs['Emission Strength'].default_value = 1.0
+            bsdf.inputs['Emission Strength'].default_value = 0.01 
     
+    # Sync diffuse color for Solid viewport display
     mat.diffuse_color = color
     return mat
 
@@ -817,84 +857,171 @@ def get_dimension_host(obj: Optional[bpy.types.Object]) -> Optional[bpy.types.Ob
     Robustly identifies the host of the dimension properties (the Label object)
     from any component of a dimension assembly (Root, Anchors, Line, or Label).
     """
-    if not obj:
-        return None
+    if not obj: return None
+    if obj.get("fcd_is_dimension"): return obj
     
-    # 1. Direct hit (The user selected the Label)
-    if obj.get("fcd_is_dimension"):
-        return obj
-    
-    # 2. Check siblings and children via the Root Empty
-    parent = obj.parent
-    # If we selected a child (Anchor/Line), go to Root then back to Label
-    if parent and (obj.get("fcd_is_dimension_anchor") or obj.get("fcd_is_dimension_line")):
-        for child in parent.children:
+    root = get_dimension_root(obj)
+    if root:
+        for child in root.children:
             if child.get("fcd_is_dimension"):
                 return child
-    
-    # 3. If we selected the Root Empty itself
-    if obj.name.endswith("_Root"):
-        for child in obj.children:
-            if child.get("fcd_is_dimension"):
-                return child
-                
     return None
+
+def get_dimension_root(obj: Optional[bpy.types.Object]) -> Optional[bpy.types.Object]:
+    """
+    Identifies the Root Empty of a dimension assembly starting from any child.
+    """
+    if not obj: return None
+    if obj.get("fcd_is_dimension_root"): return obj
+    
+    # Check parent
+    p = obj.parent
+    if p and p.get("fcd_is_dimension_root"): return p
+    
+    # Check pointer fallback
+    p_ptr = obj.get("fcd_dim_root")
+    if p_ptr and isinstance(p_ptr, bpy.types.Object): return p_ptr
+    
+    return None
+    
+    # 4. Check active object for direct back-pointer (Participants)
+    # The generators now store the Root on the target objects.
+    root_pointer = obj.get("fcd_dim_root")
+    if root_pointer:
+         for child in root_pointer.children:
+              if child.get("fcd_is_dimension"):
+                   return child
+    
+    # 5. Global Search (participating targets - Fallback)
+    for o in bpy.context.scene.objects:
+        if o.get("fcd_is_dimension_root"):
+             p_obj = o.get("fcd_parent_obj")
+             s_obj = o.get("fcd_slave_obj")
+             if (p_obj and p_obj.name == obj.name) or (s_obj and s_obj.name == obj.name):
+                  for child in o.children:
+                       if child.get("fcd_is_dimension"):
+                            return child
+    
+    return None
+
+@persistent
+def fcd_dimension_sync_handler(scene: bpy.types.Scene, depsgraph: bpy.types.Depsgraph) -> None:
+    """Ultimate real-time synchronization for Procedural Dimensions."""
+    global _dim_update_guard
+    if _dim_update_guard: return
+    
+    for obj in scene.objects:
+        if not obj or not obj.get("fcd_is_dimension"):
+            continue
+            
+        dim_props = getattr(obj, "fcd_pg_dim_props", None)
+        if not dim_props:
+            continue
+            
+        root = obj.parent
+        if not root: continue
+        
+        # Calculate Real-World orientation and distance
+        # We find the Mesh Hook (the slave) to determine distance
+        target_mesh_hook = next((c for c in root.children if c.get("fcd_is_dimension_anchor") == "HOOK"), None)
+        if not target_mesh_hook:
+             # In v1.2.8 architecture, the mesh hook is parented to 'ab' (internal end),
+             # so we find it via the child of the end hook.
+             ab = next((c for c in root.children if c.get("fcd_is_dimension_anchor") == "END"), None)
+             if ab:
+                  target_mesh_hook = next((c for c in ab.children if c.get("fcd_is_dimension_hook") == "END"), None)
+        
+        if not target_mesh_hook: continue
+        
+        # Calculate local target coordinates relative to assembly root
+        local_target = root.matrix_world.inverted() @ target_mesh_hook.matrix_world.translation
+        
+        if not dim_props.is_manual:
+             # DYNAMIC MODE: Object/Mesh Hook drives the property
+             # We use the Z-component of the target in root-local space as the true drafted length.
+             dist = abs(local_target.z)
+             
+             if abs(dim_props.length - dist) > 0.0001:
+                  # AI Editor Note: Must temporarily disable guard to allow this specific length update
+                  _dim_update_guard = True
+                  try:
+                      dim_props["length"] = dist
+                      update_dimension_length(obj)
+                  finally:
+                      _dim_update_guard = False
+        
+        # ALWAYS sync transverse coordinates to prevent target snapping during alignment
+        if abs(dim_props.target_x - local_target.x) > 0.0001 or abs(dim_props.target_y - local_target.y) > 0.0001:
+             dim_props["target_x"] = local_target.x
+             dim_props["target_y"] = local_target.y
+             # We trigger a mesh refresh only if not manual (manual slider handles its own mesh update)
+             if not dim_props.is_manual:
+                  update_dimension_length(obj)
+        else:
+              # MANUAL MODE: Only update if explicitly requested via slider
+              pass
 
 def update_dimension_length(obj):
     """
-    Updates the position of endpoints and procedural line scale for the dimension.
-    Target 'obj' is the Label object (host of properties).
+    Manual/Sync refresh for dimension components.
+    Handles both Root and Label object inputs.
+    Source of Truth: The Label (Host) object.
     """
-    if not obj or not obj.get("fcd_is_dimension"):
-        return
-
-    dim_props = getattr(obj, "fcd_pg_dim_props", None)
+    if not obj: return
+    
+    root = get_dimension_root(obj)
+    host = get_dimension_host(obj)
+    if not root or not host: return
+    
+    dim_props = getattr(host, "fcd_pg_dim_props", None)
     if not dim_props: return
     
     length = dim_props.length
     
-    # Root for sibling lookup
-    root = obj.parent
-    if not root: return
-    
-    # AI Editor Note: All components are siblings under the same root.
+    # 1. Coordinate Sync (Labels, End-Anchors, Legs)
+    label_obj = None
     for child in root.children:
-        is_end = child.get("fcd_is_dimension_anchor") == "END" or child.get("fcd_is_dimension_hook") == "END"
-        is_ext_b = child.get("fcd_is_extension_line") and child.name.endswith("ExtB")
+        if child.get("fcd_is_dimension"): label_obj = child
+        
+        is_end = child.get("fcd_is_dimension_anchor") == "END" 
+        is_ext_b = child.get("fcd_is_extension_line") and child.get("fcd_extension_type") == "END"
         
         if is_end or is_ext_b:
             child.location.z = length
         elif child.get("fcd_is_dimension_line"):
-            child.scale.z = length
-            
-    # Update Label content (FONT Curve handling)
-    unit_str = "m" if dim_props.unit_display == 'METERS' else "mm"
-    val = length if unit_str == "m" else length * 1000.0
+            # The midsection is updated in update_arrow_settings for alignment reasons
+            pass
     
-    if hasattr(obj.data, "body"):
-         obj.data.body = f"{val:.2f} {unit_str}"
-         
-    # AI Editor Note: Centering Fix - Label must stay at length/2
-    obj.location.z = length / 2
-    obj.update_tag()
+    # 2. Update Label String & Units
+    if label_obj:
+        unit_str = "m" if dim_props.unit_display == 'METERS' else "mm"
+        val = length if unit_str == "m" else length * 1000.0
+        
+        if hasattr(label_obj.data, "body"):
+             label_text = f"{val:.2f} {unit_str}"
+             if label_obj.data.body != label_text:
+                  label_obj.data.body = label_text
+                 
+        label_obj.location.z = length / 2
     
-    # AI Editor Note: Ensure arrow settings (like precision line offset) are reapplied on length change
-    update_arrow_settings(obj)
+    # 3. Global settings passthrough
+    update_arrow_settings(root)
 
 
 def update_arrow_settings(obj):
-    """Updates the global visual settings (scale, color, direction) for the dimension assembly."""
-    if not obj or not obj.get("fcd_is_dimension"):
-        return
-
-    dim_props = getattr(obj, "fcd_pg_dim_props", None)
-    if not dim_props: return
+    """
+    Updates visual settings (scale, color, direction) for the assembly.
+    Handles both Label and Root object inputs.
+    Source of Truth: The Label (Host) object.
+    """
+    if not obj: return
     
-    arrow_s = dim_props.arrow_scale
-    text_s = dim_props.text_scale
-    dir_enum = dim_props.direction
-    length = dim_props.length
-    line_t = dim_props.line_thickness
+    root = get_dimension_root(obj)
+    host = get_dimension_host(obj)
+    if not root or not host: return
+    
+    dim_props = getattr(host, "fcd_pg_dim_props", None)
+    if not dim_props: return
     
     direction_map = {
         'X': mathutils.Vector((1, 0, 0)),
@@ -904,100 +1031,266 @@ def update_arrow_settings(obj):
         '-Y': mathutils.Vector((0, -1, 0)),
         '-Z': mathutils.Vector((0, 0, -1)),
     }
-
-    # Planar Mode / Multi-Axis Alignment
-    target_vec = mathutils.Vector((0.0, 0.0, 0.0))
-    if dim_props.align_x: target_vec.x += 1.0
-    if dim_props.align_nx: target_vec.x -= 1.0
-    if dim_props.align_y: target_vec.y += 1.0
-    if dim_props.align_ny: target_vec.y -= 1.0
-    if dim_props.align_z: target_vec.z += 1.0
-    if dim_props.align_nz: target_vec.z -= 1.0
     
-    # Root of the assembly
-    root = obj.parent
-    if root:
-        offset = dim_props.offset
-        ext_beyond = dim_props.extension_line
-        
-        # Calculate drafting parallelogram offset vectors
-        mat_inv = root.matrix_world.to_3x3().inverted_safe()
-        
-        if target_vec.length > 0.001:
-             offset_world_vec = target_vec.normalized()
-        else:
-             # Default fallback: simply use the assembly's local Y axis
-             offset_world_vec = root.matrix_world.to_3x3() @ mathutils.Vector((0, 1, 0))
-             
-        # Map target vector into the Root's local space to shear the components purely
-        offset_local_dir = (mat_inv @ offset_world_vec).normalized()
-        move_vec = offset_local_dir * offset
-        
-        # Calculate extension line sheer angle
-        ext_rot_euler = offset_local_dir.to_track_quat('Z', 'Y').to_euler()
-        
-        for child in root.children:
-            if child.get("fcd_is_dimension_anchor"):
-                child.scale = (arrow_s, arrow_s, arrow_s)
-                child.location = move_vec.copy()
-                if child.get("fcd_is_dimension_anchor") == "END":
-                     child.location.z += length
+    # 1. Parameter Sync
+    # We resolve the scene's unit scale to keep visual components (line, arrows, text) 
+    # legible regardless of the measurement system (mm vs m).
+    unit_scale = bpy.context.scene.unit_settings.scale_length
+    us = 1.0 / unit_scale if unit_scale > 0 else 1.0
+    
+    length = dim_props.length
+    
+    arrow_s = dim_props.arrow_scale * us
+    text_s = dim_props.text_scale * us
+
+    offset = dim_props.offset * us
+    line_t = dim_props.line_thickness * us
+    dir_enum = dim_props.direction
+    
+    # Calculate drafting parallelogram offset vectors
+    mat_inv = root.matrix_world.to_3x3().inverted_safe()
+    
+    # Resolve the world offset vector based on alignment flags
+    # AI Editor Note: User Request - Allow combining axis alignments for diagonal offsets.
+    offset_world_vec = mathutils.Vector((0, 0, 0))
+    if dim_props.align_x: offset_world_vec.x += 1
+    if dim_props.align_nx: offset_world_vec.x -= 1
+    if dim_props.align_y: offset_world_vec.y += 1
+    if dim_props.align_ny: offset_world_vec.y -= 1
+    if dim_props.align_z: offset_world_vec.z += 1
+    if dim_props.align_nz: offset_world_vec.z -= 1
+    
+    if offset_world_vec.length < 0.001:
+         # Default: assembly local Y axis
+         offset_world_vec = root.matrix_world.to_3x3() @ mathutils.Vector((0, 1, 0))
+    else:
+         offset_world_vec = offset_world_vec.normalized()
+         
+    offset_local_dir = (mat_inv @ offset_world_vec).normalized()
+    
+    # Compensation for Parent Scale:
+    # If the root is parented to a scaled object, we must divide our children's 
+    # scale and location by the root's world scale to maintain absolute drafting units.
+    rw_scale = root.matrix_world.to_scale()
+    def safe_divide(val, s): return val / s if abs(s) > 0.0001 else val
+    
+    # Apply location scale compensation to move_vec
+    move_vec = mathutils.Vector((
+        safe_divide(offset_local_dir.x * offset, rw_scale.x),
+        safe_divide(offset_local_dir.y * offset, rw_scale.y),
+        safe_divide(offset_local_dir.z * offset, rw_scale.z)
+    ))
+    
+    # Extension Leg Rotation: points from the line BACK to the points
+    ext_rot_offset_dir = offset_local_dir.copy()
+    ext_rot_euler = (-ext_rot_offset_dir).to_track_quat('Z', 'Y').to_euler()
+    
+    # Compensation for Parent Scale:
+    # If the root is parented to a scaled object, we must divide our children's 
+    # scale by the root's world scale to maintain absolute draftsman units.
+    rw_scale = root.matrix_world.to_scale()
+    def safe_divide(val, s): return val / s if abs(s) > 0.0001 else val
+    
+    for child in root.children:
+        # 1. PHYSICAL MASTER ANCHORS & HOOKS: Fixed scale
+        tag = child.get("fcd_is_dimension_anchor")
+        if tag in ["MASTER", "HOOK"]:
+             if child.get("fcd_anchor_type") == "END" or tag == "HOOK":
+                  child.location = (dim_props.target_x, dim_props.target_y, length)
+             else:
+                  child.location = (0, 0, 0)
+             s_val = 0.05 if tag == "MASTER" else 0.4
+             child.scale = (safe_divide(s_val, rw_scale.x), safe_divide(s_val, rw_scale.y), safe_divide(s_val, rw_scale.z))
+             continue
+
+        # 2. VISUAL COMPONENTS: These slide along the drafting offset
+        if child.get("fcd_is_dimension_anchor") == "VISUAL":
+             child.scale = (safe_divide(arrow_s, rw_scale.x), safe_divide(arrow_s, rw_scale.y), safe_divide(arrow_s, rw_scale.z))
+             child.location = move_vec.copy()
+             if child.get("fcd_anchor_type") == "END":
+                  child.location.z = length
             
-            elif child.get("fcd_is_dimension_line"):
-                arrow_l = 0.15 * arrow_s
-                child.scale.x = line_t
-                child.scale.y = line_t
-                child.scale.z = max(0.001, length - (arrow_l * 2))
-                child.location = move_vec.copy()
-                child.location.z += arrow_l
+        elif child.get("fcd_is_dimension_line"): # The Main Line
+            # AI Editor Note: User Request - Line should stay full length. 
+            # We remove the scaling clearance to ensure exact point-to-point spanning.
+            child.location.x = move_vec.x
+            child.location.y = move_vec.y
+            child.location.z = 0
+            child.scale = (safe_divide(line_t, rw_scale.x), safe_divide(line_t, rw_scale.y), safe_divide(length, rw_scale.z))
+            child.rotation_euler = (0, 0, 0)
+            
+        elif child.get("fcd_is_extension_line"):
+            child.hide_viewport = not dim_props.use_extension_lines
+            child.hide_render = not dim_props.use_extension_lines
+            if not dim_props.use_extension_lines: continue
+            
+            child.scale.x = safe_divide(line_t * 0.9, rw_scale.x)
+            child.scale.y = safe_divide(line_t * 0.9, rw_scale.y)
+            child.location = move_vec.copy()
+            if child.get("fcd_extension_type") == "END":
+                 child.location.z = length
+            
+            child.rotation_euler = ext_rot_euler
+            child.scale.z = safe_divide(abs(offset), rw_scale.z)
+            if child.scale.z < 0.001: child.scale.z = 0.001
+            
+        elif child.get("fcd_is_dimension"): # The Label
+            child.scale = (safe_divide(text_s, rw_scale.x), safe_divide(text_s, rw_scale.y), safe_divide(text_s, rw_scale.z))
+            text_clearance = offset_local_dir * (arrow_s * 0.2)
+            child.location = move_vec + text_clearance
+            
+            # --- Text Alignment Logic ---
+            # Standardized: Label stays at the center of the line.
+            # Alignment (Left/Center/Right) is applied to the Font Curve's align_x property.
+            child.location.z = length / 2
+            
+            if hasattr(child.data, "align_x"):
+                 child.data.align_x = dim_props.text_alignment
+            
+            # Text readability logic
+            base_dir = offset_local_dir.copy()
+            base_rot = base_dir.to_track_quat('Z', 'Y').to_euler()
+            if dim_props.flip_text:
+                base_rot.rotate_axis('X', math.pi)
+            
+            # Apply orientation
+            user_mat = mathutils.Euler(dim_props.text_rotation).to_matrix()
+            child.rotation_euler = (base_rot.to_matrix() @ user_mat).to_euler()
+            
+            # Sync material & visibility
+            mat = child.active_material
+            if mat:
+                 child.color = mat.diffuse_color
+                 child.show_in_front = True
                 
-            elif child.get("fcd_is_extension_line"):
-                child.scale.x = line_t * 0.8 
-                child.scale.y = line_t * 0.8
-                
-                # Extension line originates at arrow head tip and extends inward.
-                inward_len = abs(dim_props.extension_line)
-                start_loc = move_vec.copy() - (offset_local_dir * inward_len)
-                
-                child.location = start_loc
-                if child.name.endswith("ExtB"):
-                    child.location.z += length
-                    
-                child.scale.z = inward_len
-                
-                # Shear vector tracking
-                child.rotation_euler = ext_rot_euler
-                
-            elif child.get("fcd_is_dimension"): # The Label
-                child.scale = (text_s, text_s, text_s)
-                # Expand outward slightly for label padding
-                text_clearance = offset_local_dir * (arrow_s * 0.5)
-                child.location = move_vec + text_clearance
-                child.location.z += length / 2
-                
-                # Apply Text Alignment (With Mirroring)
-                align_choice = dim_props.text_alignment
-                if dim_props.flip_text:
-                     align_map = {'LEFT': 'RIGHT', 'RIGHT': 'LEFT', 'CENTER': 'CENTER'}
-                     align_choice = align_map.get(align_choice, 'CENTER')
-                     
-                if hasattr(child.data, "align_x"):
-                    child.data.align_x = align_choice
-                    
-                # Initial/base axis orientation matches the extension line's orientation
-                base_rot = ext_rot_euler.copy()
-                
-                if dim_props.flip_text:
-                    base_rot.rotate_axis('X', math.pi)
-                
-                base_mat = base_rot.to_matrix()
-                # Multiply rotation correctly: Base * User
-                user_mat = mathutils.Euler(dim_props.text_rotation).to_matrix()
-                child.rotation_euler = (base_mat @ user_mat).to_euler()
-                
-        root.update_tag()
+    root.update_tag()
 
 
+def sync_dimension_flipping(obj):
+    """Event-triggered role swap to ensure stability."""
+    global _dim_update_guard
+    if _dim_update_guard: return
+    
+    # Resolve the hub of the assembly (Root) safely
+    root = None
+    if isinstance(obj, bpy.types.Object):
+         root = obj if obj.get("fcd_dim_root_marker") else obj.get("fcd_dim_root")
+         if not root:
+              # Fallback to parent if called on a component
+              root = obj.parent if not obj.get("fcd_dim_root_marker") else obj
+    
+    if not root: return
+    
+    dim_props = root.fcd_pg_dim_props
+    
+    obj_a = root.get("fcd_parent_obj")
+    obj_b = root.get("fcd_slave_obj")
+    if not obj_a or not obj_b: return
+    
+    # 1. Atomic Change Detection: Only flip if the state has changed
+    # Logic: The parent of the 'root' corresponds to the 'is_flipped' state.
+    # If is_flipped=False, parent should be obj_a. 
+    # If is_flipped=True, parent should be obj_b.
+    current_parent = root.parent
+    target_parent = obj_b if dim_props.is_flipped else obj_a
+    target_slave = obj_a if dim_props.is_flipped else obj_b
+    
+    if current_parent == target_parent:
+         # No role swap needed - this update was likely triggered by arrow_scale/etc
+         return
+    
+    # D) RECONSTRUCTIVE FLIP (Delayed/Atomic for Memory Safety)
+    # Logic: To avoid EXCEPTION_ACCESS_VIOLATION in Blender 4.5+, we must not 
+    # delete the object currently triggering the property update or its parents 
+    # inside the update loop. We queue the reconstruction for a separate main-loop pass.
+    
+    # 1. Store IDs and Configuration before the delay to avoid stale pointers
+    config = {
+         "arrow_scale": dim_props.arrow_scale,
+         "text_scale": dim_props.text_scale,
+         "line_thickness": dim_props.line_thickness,
+         "offset": dim_props.offset,
+         "use_extension_lines": dim_props.use_extension_lines,
+         "text_color": dim_props.text_color[:],
+         "unit_display": dim_props.unit_display,
+         "text_alignment": dim_props.text_alignment,
+         "align_x": dim_props.align_x, "align_nx": dim_props.align_nx,
+         "align_y": dim_props.align_y, "align_ny": dim_props.align_ny,
+         "align_z": dim_props.align_z, "align_nz": dim_props.align_nz,
+    }
+    
+    root_name = root.name
+    p_name = target_parent.name
+    s_name = target_slave.name
+    
+    def delayed_rebuild():
+         global _dim_update_guard
+         try:
+              # Guard context
+              if not bpy.context or not bpy.context.view_layer: 
+                   _dim_update_guard = False
+                   return
+              
+              # A) PRE-FLIP BAKE: Finalize poses on current participants
+              obj_p = bpy.data.objects.get(p_name)
+              obj_s = bpy.data.objects.get(s_name)
+              if not obj_p or not obj_s:
+                   _dim_update_guard = False
+                   return
+              
+              prev_mode = bpy.context.mode
+              if prev_mode != 'OBJECT': bpy.ops.object.mode_set(mode='OBJECT')
+              
+              for p_obj in [obj_p, obj_s]:
+                   bpy.ops.object.select_all(action='DESELECT')
+                   p_obj.select_set(True)
+                   bpy.context.view_layer.objects.active = p_obj
+                   try: 
+                        # Use override to ensure operator context stability inside timer
+                        bpy.ops.fcd.bake_anchor()
+                   except: pass
+              
+              # B) PURGE OLD ASSEMBLY
+              old_root = bpy.data.objects.get(root_name)
+              if old_root:
+                   to_del = [old_root] + [c for c in old_root.children]
+                   for o in to_del:
+                        # Clean unlinking minimizes access violations during memory free
+                        for col in o.users_collection: col.objects.unlink(o)
+                        try: bpy.data.objects.remove(o, do_unlink=True)
+                        except: pass
+              
+              # C) REBUILD: Call procedural generator with fresh coordinate frames
+              from . import generators
+              new_dim = generators.generate_smart_dimension_parametric(
+                   bpy.context, 
+                   obj_p.matrix_world.translation, 
+                   obj_s.matrix_world.translation,
+                   name="FCD_Dimension",
+                   parent_a=(obj_p, 'OBJECT', 0),
+                   parent_b=(obj_s, 'OBJECT', 0)
+              )
+              
+              if new_dim:
+                   new_props = new_dim.fcd_pg_dim_props
+                   # Restore visual configuration across the reconstructive gap
+                   for key, val in config.items():
+                        try: setattr(new_props, key, val)
+                        except: pass
+                   # Reset flip state on the new assembly to avoid recursion
+                   new_props.is_flipped = False
+                   
+              if prev_mode != 'OBJECT': bpy.ops.object.mode_set(mode=prev_mode)
+                   
+         except Exception as e:
+              print(f"[FCD] Reconstructive Flip Failure: {e}")
+         return None
+
+    # Defer execution to clear the current property update stack
+    bpy.app.timers.register(delayed_rebuild, first_interval=0.01)
+    
+    # Global guard to prevent the property dispatcher from re-triggering during the delete
+    _dim_update_guard = True 
 
 def build_example_arm(context: bpy.types.Context, scale_factor: float = 1.0):
     """
@@ -5283,6 +5576,10 @@ def local_cursor_depsgraph_handler(scene: bpy.types.Scene, depsgraph: bpy.types.
         return
 
     obj = context.active_object
+    # Avoid ValueError: Matrix.invert(ed): matrix does not have an inverse
+    if abs(obj.matrix_world.determinant()) < 1e-6:
+        return
+        
     cursor_local_vec = obj.matrix_world.inverted() @ scene.cursor.location
 
     # AI Editor Note: Attributes may be missing during add-on registration/unregistration.
@@ -5769,7 +6066,7 @@ def register():
     if set_scene_units_handler not in bpy.app.handlers.load_post: bpy.app.handlers.load_post.append(set_scene_units_handler)
     if active_bone_change_handler not in bpy.app.handlers.depsgraph_update_post: bpy.app.handlers.depsgraph_update_post.append(active_bone_change_handler)
     if local_cursor_depsgraph_handler not in bpy.app.handlers.depsgraph_update_post: bpy.app.handlers.depsgraph_update_post.append(local_cursor_depsgraph_handler)
-    if dimension_update_handler not in bpy.app.handlers.depsgraph_update_post: bpy.app.handlers.depsgraph_update_post.append(dimension_update_handler)
+    if fcd_dimension_sync_handler not in bpy.app.handlers.depsgraph_update_post: bpy.app.handlers.depsgraph_update_post.append(fcd_dimension_sync_handler)
 
     # Lambda with context safety
     def safe_dimension_update(dummy):
@@ -5783,7 +6080,7 @@ def register():
 
 def unregister():
     # 1. Remove Handlers
-    for h in [sync_light_props_handler, fcd_placement_handler, active_bone_change_handler, local_cursor_depsgraph_handler, dimension_update_handler]:
+    for h in [sync_light_props_handler, fcd_placement_handler, active_bone_change_handler, local_cursor_depsgraph_handler, fcd_dimension_sync_handler]:
         if h in bpy.app.handlers.depsgraph_update_post:
             bpy.app.handlers.depsgraph_update_post.remove(h)
     

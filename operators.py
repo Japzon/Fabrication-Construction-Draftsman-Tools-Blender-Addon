@@ -2111,7 +2111,7 @@ class FCD_OT_AddParametricAnchor(bpy.types.Operator):
                 self.report({'ERROR'}, "Failed to generate anchors.")
                 return {'CANCELLED'}
                 
-            self.report({'INFO'}, f"[FCD v1.0.8] Hook Attached. Workspace Restored: {context.mode}")
+            self.report({'INFO'}, f"[FCD v1.3.1] Hook Attached. Workspace Restored: {context.mode}")
             
         except Exception as e:
             self.report({'ERROR'}, f"Hook System Failure: {str(e)}")
@@ -2142,7 +2142,7 @@ class FCD_OT_AddParametricAnchor(bpy.types.Operator):
                         except:
                             pass
             
-            self.report({'INFO'}, f"[FCD v1.0.8] Hook Attached. Workspace Restored: {context.mode}")
+            self.report({'INFO'}, f"[FCD v1.3.1] Hook Attached. Workspace Restored: {context.mode}")
             
         return {'FINISHED'}
 
@@ -2246,7 +2246,7 @@ class FCD_OT_AddMarker(bpy.types.Operator):
                         except:
                             pass
             
-            self.report({'INFO'}, f"[FCD v1.0.8] Markers Attached. Workspace Restored: {context.mode}")
+            self.report({'INFO'}, f"[FCD v1.3.1] Markers Attached. Workspace Restored: {context.mode}")
                             
         return {'FINISHED'}
 
@@ -2872,10 +2872,23 @@ class FCD_OT_Add_Dimension(bpy.types.Operator):
                     obj0, center0, indices0 = per_obj_data[0]
                     bm0 = bmesh.from_edit_mesh(obj0.data)
                     bm0.verts.ensure_lookup_table()
-                    # Try select history first
-                    hist = [e for e in bm0.select_history if isinstance(e, bmesh.types.BMVert) and e.select]
-                    v1, v2 = (hist[-2], hist[-1]) if len(hist) >= 2 else (None, None)
+                    # Using Active Vertex logic for selection order certainty
+                    v_active = bm0.select_history.active if isinstance(bm0.select_history.active, bmesh.types.BMVert) else None
+                    if not v_active:
+                        hist = [e for e in bm0.select_history if isinstance(e, bmesh.types.BMVert) and e.select]
+                        if hist: v_active = hist[-1]
+                    
+                    v1, v2 = None, None
+                    if v_active and v_active.select:
+                        # v2 is the Dynamic end (Active)
+                        v2 = v_active
+                        # Find the furthest vertex from v_active to serve as v1 (Static)
+                        v_sel = [v for v in bm0.verts if v.select and v != v2]
+                        if v_sel:
+                            v1 = max(v_sel, key=lambda v: (v.co - v2.co).length)
+                    
                     if not v1 or not v2:
+                        # Absolute fallback to indices
                         v_sel = [v for v in bm0.verts if v.select]
                         if len(v_sel) >= 2: v1, v2 = v_sel[0], v_sel[-1]
                     
@@ -2904,8 +2917,12 @@ class FCD_OT_Add_Dimension(bpy.types.Operator):
                     return {'CANCELLED'}
 
                 # --- Step 3: Generate Dimension ---
-                hook_a_obj, p1 = hook_empties[0]
-                hook_b_obj, p2 = hook_empties[1]
+                hook_a_obj, p1_v = hook_empties[0]
+                hook_b_obj, p2_v = hook_empties[1]
+                
+                # CAST TO CONCRETE TUPLES TO AVOID MATRIX POINTERS
+                p1 = (p1_v.x, p1_v.y, p1_v.z)
+                p2 = (p2_v.x, p2_v.y, p2_v.z)
                 
                 # Dim creation must happen in Object Mode
                 if context.mode != 'OBJECT':
@@ -2929,17 +2946,24 @@ class FCD_OT_Add_Dimension(bpy.types.Operator):
             valid_sel = [o for o in sel if not o.get("fcd_is_dimension_anchor") and not o.get("fcd_is_dimension")]
 
             if len(valid_sel) >= 2:
-                o2 = context.view_layer.objects.active if context.view_layer.objects.active in valid_sel else valid_sel[-1]
-                o1 = next((o for o in valid_sel if o != o2), valid_sel[-2])
+                # Identification: Active is the dynamic end (p2), Other is start (p1)
+                o2 = context.active_object if context.active_object in valid_sel else valid_sel[-1]
+                o1 = next((o for o in valid_sel if o != o2), valid_sel[0])
                 
-                # --- Attachment Phase (Sequential Anchor Generation) ---
-                # We create non-warping hooks for each object to serve as stable dimension points.
+                # --- Pre-calculate Definitive World Coordinates ---
+                # We do this BEFORE any parenting or hook creation to bypass matrix-update lag.
+                context.view_layer.update()
+                # CAST TO CONCRETE TUPLES TO AVOID MATRIX POINTERS
+                p1_v = o1.matrix_world.translation.copy()
+                p2_v = o2.matrix_world.translation.copy()
+                p1 = (p1_v.x, p1_v.y, p1_v.z)
+                p2 = (p2_v.x, p2_v.y, p2_v.z)
+                
+                # --- Attachment Phase (Stable Anchor Generation) ---
                 h1 = create_hook_anchor(context, o1, [v.index for v in o1.data.vertices], name_prefix="Hook_Dim_Obj")
                 h2 = create_hook_anchor(context, o2, [v.index for v in o2.data.vertices], name_prefix="Hook_Dim_Obj")
                 
                 if h1 and h2:
-                    p1 = h1.location.copy()
-                    p2 = h2.location.copy()
                     parent_a = (h1, 'OBJECT', 0)
                     parent_b = (h2, 'OBJECT', 0)
 
@@ -2991,6 +3015,17 @@ class FCD_OT_Add_Dimension(bpy.types.Operator):
                         context.view_layer.objects.active = target_obj
                     target_obj.select_set(True)
 
+                    # --- Anti-Warping Normalization (FCD v1.4.1) ---
+                    # Use a stable, mathematically correct matrix-inverse to lock the rest state
+                    try:
+                        for mod in target_obj.modifiers:
+                             if mod.type == 'HOOK' and mod.object:
+                                  # Correct normalization: Δ = Empty^-1 * Object
+                                  mod.matrix_inverse = mod.object.matrix_world.inverted() @ target_obj.matrix_world
+                                  mod.center = (0, 0, 0)
+                    except:
+                        pass
+
                     if initial_mode and "EDIT" in initial_mode:
                         if context.mode != initial_mode:
                             try:
@@ -3006,7 +3041,7 @@ class FCD_OT_Add_Dimension(bpy.types.Operator):
             except:
                 pass
             
-            self.report({'INFO'}, f"[FCD v1.0.8] Dimension Process Complete. Workspace Sync: {context.mode}")
+            self.report({'INFO'}, f"[FCD v1.5.1] Dimension Process Complete. Workspace Sync: {context.mode}")
 
 class FCD_OT_AddModifier(bpy.types.Operator):
     bl_idname = "fcd.add_parametric_mod"
@@ -6152,6 +6187,40 @@ class FCD_OT_AccurateScale(bpy.types.Operator):
         self.report({'INFO'}, f"Applied accurate scale: {target_dim}m on selected axes")
         return {'FINISHED'}
 
+class FCD_OT_Dimension_AutoScale(bpy.types.Operator):
+    """Automatically scale arrowheads, text, line thickness and offset based on dimension length."""
+    bl_idname = "fcd.dimension_auto_scale"
+    bl_label = "Auto Size Components"
+    bl_description = "Calculates optimal visual sizes based on length"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        from . import core
+        return core.get_dimension_host(context.active_object) is not None
+
+    def execute(self, context):
+        from . import core
+        host = core.get_dimension_host(context.active_object)
+        if not host: return {'CANCELLED'}
+        
+        dim_props = host.fcd_pg_dim_props
+        length = dim_props.length
+        
+        # Calculate standard drafting ratios
+        dim_props.arrow_scale = length * 0.2
+        dim_props.text_scale = length * 0.1
+        dim_props.line_thickness = length * 0.002
+        dim_props.offset = length * 0.1
+        
+        # Ensure minimum visibility guards
+        if dim_props.arrow_scale < 0.001: dim_props.arrow_scale = 0.001
+        if dim_props.text_scale < 0.001: dim_props.text_scale = 0.001
+        
+        core.update_arrow_settings(host)
+        self.report({'INFO'}, f"Auto-scaled dimension to {length:.3f}m standard")
+        return {'FINISHED'}
+
 def register():
     CLASSES = [
         FCD_OT_Browse_Library, FCD_OT_CreateCamera, FCD_OT_Camera_Setup, FCD_OT_Camera_Look_Through,
@@ -6174,7 +6243,7 @@ def register():
         FCD_OT_ExportList_Remove, FCD_OT_Export, FCD_OT_ExportSelected, FCD_OT_TogglePlacement, 
         FCD_OT_CreateRig, FCD_OT_MergeArmatures, FCD_OT_PurgeBones, FCD_OT_ParentToActive, 
         FCD_OT_EnterPoseMode, FCD_OT_EnterObjectMode, FCD_OT_AddBone, FCD_OT_ApplyRestPose,
-        FCD_OT_AccurateScale
+        FCD_OT_AccurateScale, FCD_OT_Dimension_AutoScale
     ]
     for cls in CLASSES:
         if hasattr(cls, 'bl_rna'):
@@ -6205,7 +6274,7 @@ def unregister():
         FCD_OT_ExportList_Remove, FCD_OT_Export, FCD_OT_ExportSelected, FCD_OT_TogglePlacement, 
         FCD_OT_CreateRig, FCD_OT_MergeArmatures, FCD_OT_PurgeBones, FCD_OT_ParentToActive, 
         FCD_OT_EnterPoseMode, FCD_OT_EnterObjectMode, FCD_OT_AddBone, FCD_OT_ApplyRestPose,
-        FCD_OT_AccurateScale
+        FCD_OT_AccurateScale, FCD_OT_Dimension_AutoScale
     ]
     for cls in reversed(CLASSES):
         try:

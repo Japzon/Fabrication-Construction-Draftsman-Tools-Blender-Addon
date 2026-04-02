@@ -80,22 +80,40 @@ def update_text_color(self, context):
         self.id_data.update_tag()
 
 def update_arrow_settings_timer(self, context):
-    """Dispatches arrow setting update via timer."""
+    """Dispatches arrow setting update via timer with a single-queue guard."""
+    from . import core
+    if getattr(core, "_dim_timer_queued", False): return
+    core._dim_timer_queued = True
+    
+    # AI Editor Note: Specifically trigger the heavy role swap logic 
+    # IF this is the property being changed. self is the PropertyGroup.
+    obj = self.id_data
+    if obj:
+         # Note: sync_dimension_flipping internally handles the check if role swap is needed
+         core.sync_dimension_flipping(obj)
+
     def dispatch():
-        from . import core
+        core._dim_timer_queued = False
         obj = self.id_data
         if obj: core.update_arrow_settings(obj)
         return None
-    bpy.app.timers.register(dispatch, first_interval=0.01)
+    bpy.app.timers.register(dispatch, first_interval=0.03)
 
 def update_dimension_length_timer(self, context):
-    """Dispatches dimension length update via timer."""
+    """Dispatches length update via timer with a single-queue guard."""
+    from . import core
+    if getattr(core, "_dim_timer_queued", False): return
+    core._dim_timer_queued = True
+    
+    if hasattr(self, "is_manual"):
+        self.is_manual = True
+        
     def dispatch():
-        from . import core
+        core._dim_timer_queued = False
         obj = self.id_data
         if obj: core.update_dimension_length(obj)
         return None
-    bpy.app.timers.register(dispatch, first_interval=0.01)
+    bpy.app.timers.register(dispatch, first_interval=0.03)
 
 def update_cursor_local_wrapper(self, context):
     """Lean dispatcher to core module for cursor tool."""
@@ -150,11 +168,12 @@ class FCD_PG_Dimension_Props(bpy.types.PropertyGroup):
     text_scale: bpy.props.FloatProperty(name="Text Size", default=0.1, min=0.001, soft_max=2.0, update=update_arrow_settings_timer)
     line_thickness: bpy.props.FloatProperty(name="Line Thickness", default=0.002, min=0.0, unit='LENGTH', update=update_arrow_settings_timer)
     offset: bpy.props.FloatProperty(name="Offset from Target", default=0.1, unit='LENGTH', update=update_arrow_settings_timer)
-    extension_line: bpy.props.FloatProperty(name="Extension Line", default=0.05, unit='LENGTH', update=update_arrow_settings_timer)
     text_color: bpy.props.FloatVectorProperty(name="Label Color", subtype='COLOR', default=(0.0, 0.0, 0.0, 1.0), size=4, min=0.0, max=1.0, update=update_text_color)
     unit_display: bpy.props.EnumProperty(name="Units", items=[('METERS', "Meters (m)", ""), ('MM', "Millimeters (mm)", "")], default='METERS', update=update_dimension_length_timer)
     length: bpy.props.FloatProperty(name="Line Length", default=1.0, unit='LENGTH', update=update_dimension_length_timer)
     direction: bpy.props.EnumProperty(name="Direction", items=[('X', "X", ""), ('Y', "Y", ""), ('Z', "Z", ""), ('-X', "-X", ""), ('-Y', "-Y", ""), ('-Z', "-Z", "")], default='Z', update=update_arrow_settings_timer)
+    is_flipped: bpy.props.BoolProperty(name="Flip Target Roles", default=False, update=update_arrow_settings_timer)
+    use_extension_lines: bpy.props.BoolProperty(name="Use Extension Lines", default=True, update=update_arrow_settings_timer)
     is_manual: bpy.props.BoolProperty(name="Manual Mode", default=False)
     align_x: bpy.props.BoolProperty(name="+X", default=False, update=update_arrow_settings_timer)
     align_nx: bpy.props.BoolProperty(name="-X", default=False, update=update_arrow_settings_timer)
@@ -164,6 +183,10 @@ class FCD_PG_Dimension_Props(bpy.types.PropertyGroup):
     align_nz: bpy.props.BoolProperty(name="-Z", default=False, update=update_arrow_settings_timer)
     flip_text: bpy.props.BoolProperty(name="Flip Text", default=False, update=update_arrow_settings_timer)
     text_rotation: bpy.props.FloatVectorProperty(name="Text Rotation", subtype='EULER', size=3, default=(0.0, 0.0, 0.0), update=update_arrow_settings_timer)
+    
+    # Hidden Persistent State (For Offset Coherence)
+    target_x: bpy.props.FloatProperty(name="Target Transverse X", default=0.0)
+    target_y: bpy.props.FloatProperty(name="Target Transverse Y", default=0.0)
     text_alignment: bpy.props.EnumProperty(
         name="Text Alignment",
         items=[('LEFT', "Left", ""), ('CENTER', "Center", ""), ('RIGHT', "Right", "")],
@@ -506,9 +529,11 @@ def register():
     )
     
     # 1.1 Dimension Globals (FCD Scoped)
-    bpy.types.Scene.fcd_dim_arrow_scale = bpy.props.FloatProperty(name="Arrow Scale", default=1.0, min=0.01)
-    bpy.types.Scene.fcd_dim_text_scale = bpy.props.FloatProperty(name="Text Scale", default=1.0, min=0.01)
-    bpy.types.Scene.fcd_dim_offset = bpy.props.FloatProperty(name="Offset", default=0.5, min=0.0, unit='LENGTH')
+    bpy.types.Scene.fcd_dim_arrow_scale = bpy.props.FloatProperty(name="Arrow Scale", default=0.1, min=0.01)
+    bpy.types.Scene.fcd_dim_text_scale = bpy.props.FloatProperty(name="Text Scale", default=0.1, min=0.01)
+    bpy.types.Scene.fcd_dim_line_thickness = bpy.props.FloatProperty(name="Line Thickness", default=0.002, min=0.0, unit='LENGTH')
+    bpy.types.Scene.fcd_dim_offset = bpy.props.FloatProperty(name="Offset", default=0.1, min=0.0, unit='LENGTH')
+    bpy.types.Scene.fcd_dim_auto_scale_on_spawn = bpy.props.BoolProperty(name="Auto Scale Components", default=True)
     bpy.types.Scene.fcd_dim_axis = bpy.props.EnumProperty(
         name="Measurement Axis", 
         items=[('X', "X", ""), ('Y', "Y", ""), ('Z', "Z", ""), ('ALL', "All Axes", "")], 

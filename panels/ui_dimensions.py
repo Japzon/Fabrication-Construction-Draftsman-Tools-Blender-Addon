@@ -68,7 +68,21 @@ class FCD_PT_Dimensions_And_Precision_Transforms:
 
             # --- Smart Dimension Toolkit (Unified) ---
             dim_toolkit_box = box.box()
-            dim_toolkit_box.label(text="Dimension Generator & Properties", icon='DRIVER_DISTANCE')
+            dim_toolkit_box.label(text="Dimension Generator & Preferences", icon='DRIVER_DISTANCE')
+            
+            # Global Preferences (For new dimensions)
+            pref_col = dim_toolkit_box.column(align=True)
+            pref_col.label(text="Default Preferences (New Assemblies):", icon='PREFERENCES')
+            row_pref = pref_col.row(align=True)
+            row_pref.prop(scene, "fcd_dim_arrow_scale", text="Arrow")
+            row_pref.prop(scene, "fcd_dim_text_scale", text="Txt Size")
+            row_pref2 = pref_col.row(align=True)
+            row_pref2.prop(scene, "fcd_dim_line_thickness", text="Thickness")
+            row_pref2.prop(scene, "fcd_dim_auto_scale_on_spawn", text="Auto Size")
+            pref_col.prop(scene, "fcd_dim_offset", text="Default Offset")
+            pref_col.prop(scene, "fcd_dim_axis", text="Measurement Mode")
+            
+            dim_toolkit_box.separator()
             col = dim_toolkit_box.column(align=True)
             col.operator("fcd.add_dimension", text="Generate Dimension", icon='ADD')
             
@@ -90,13 +104,16 @@ class FCD_PT_Dimensions_And_Precision_Transforms:
                 
                 # 'Length' allows for precise input of dimensions.
                 col.prop(dim_props, "length", text="Line Length")
+                col.operator("fcd.dimension_auto_scale", text="Auto Size Components", icon='AUTO')
                 
                 row2 = col.row(align=True)
                 row2.prop(dim_props, "arrow_scale", text="Arrow")
                 row2.prop(dim_props, "text_scale", text="Text Size")
+                
                 col.prop(dim_props, "line_thickness", text="Line Thickness")
                 col.prop(dim_props, "offset", text="Offset from Target")
-                col.prop(dim_props, "extension_line", text="Extension Line")
+                col.prop(dim_props, "is_flipped", text="Flip Target Roles")
+                col.prop(dim_props, "use_extension_lines", text="Use Extension Lines")
                 col.prop(dim_props, "text_color", text="Label Color")
                 col.prop(dim_props, "flip_text", text="Flip Text")
                 col.prop(dim_props, "text_rotation", text="Text Rotation")

@@ -601,10 +601,15 @@ def generate_smart_dimension_parametric(context, p1, p2, name="Dimension", paren
     scene = context.scene
     coll = context.collection
     
+    # Ensure p1 and p2 are valid world vectors
+    if p1 is None or p2 is None: return None
+    p1_v = mathutils.Vector((p1[0], p1[1], p1[2]))
+    p2_v = mathutils.Vector((p2[0], p2[1], p2[2]))
+    
     # AI Editor Note: Initial orientation logic MUST happen before Root creation
-    dist_vec = p2 - p1
-    initial_length = dist_vec.length
-    if initial_length < 0.001: return
+    direction = p2_v - p1_v
+    initial_length = direction.length
+    if initial_length < 0.0001: return None
     
     # AI Editor Note: Design Strategy - The 'Root' is an Empty that handles 
     # the coordinate system and orientation. Components are siblings.
@@ -619,49 +624,69 @@ def generate_smart_dimension_parametric(context, p1, p2, name="Dimension", paren
     root.hide_render = True
     root.empty_display_size = 0.05
     
-    # ULTIMATE ORIENTATION FIX: High-Precision Matrix Constructor
-    # We build the world matrix manually to bypass TrackTo lag entirely.
-    direction = (p2 - p1)
-    length = direction.length
-    if length > 0.0001:
-        # Construct rotation matrix from direction vector (Z points to target)
-        z_axis = direction.normalized()
-        # Find a stable up vector
-        up = mathutils.Vector((0, 0, 1))
-        if abs(z_axis.dot(up)) > 0.99:
-            up = mathutils.Vector((0, 1, 0))
-        x_axis = up.cross(z_axis).normalized()
-        y_axis = z_axis.cross(x_axis).normalized()
-        
-        # Create 3x3 rotation component
-        rot_mat = mathutils.Matrix((x_axis, y_axis, z_axis)).transposed()
-        # Combine into world_matrix
-        root.matrix_world = rot_mat.to_4x4()
-        root.matrix_world.translation = p1
+    # FINAL COORDINATE RESOLVE: Use Blender's built-in to_track_quat for a
+    # guaranteed right-handed, valid rotation matrix.
+    # Root's +Z axis points from p1 toward p2. All child components that live
+    # at local z=0 start at p1, and at local z=initial_length end at p2.
+    z_axis = direction.normalized()
+    rot_quat = z_axis.to_track_quat('Z', 'Y')
+    rot_mat = rot_quat.to_matrix().to_4x4()
+    rot_mat.translation = p1_v
+
+    # AI Editor Note: DUAL LOCK - Set both matrix and properties to ensure stability 
+    # across Blender 4.5's asynchronous evaluation frames.
+    root.matrix_world = rot_mat
+    root.location = p1_v
+    root.rotation_euler = rot_mat.to_euler()
     
+    # AI Editor Note: Mandatory View Layer Sync to finalize world coordinates 
+    # before we start parenting visual children.
     context.view_layer.update() 
-    dist_vec = direction
-    root["fcd_dist_vec"] = [dist_vec.x, dist_vec.y, dist_vec.z]
-    
+    root["fcd_dist_vec"] = [direction.x, direction.y, direction.z]
+    if parent_a: 
+         root["fcd_parent_obj"] = parent_a[0]
+         # Add back-pointer for UI persistence
+         parent_a[0]["fcd_dim_root"] = root
+    if parent_b: 
+         root["fcd_slave_obj"] = parent_b[0]
+         # Add back-pointer for UI persistence
+         parent_b[0]["fcd_dim_root"] = root
+         
+    root["fcd_is_dimension_root"] = True
     # AI Editor Note: Cache world transformation for parenting restoration
     old_mat = root.matrix_world.copy()
     
-    # 2. Spawn Anchor Start (Triangle, Child of Root)
-    tri_mesh = create_triangle_anchor_mesh(name)
-    aa = bpy.data.objects.new(name, tri_mesh)
-    dim_coll.objects.link(aa)
-    aa.parent = root
-    aa["fcd_is_dimension_anchor"] = "START"
-    aa.location = (0, 0, 0)
+    # 3. Create Physical Master Anchors (For Hook Linking)
+    # These are hidden/small empties that NEVER drift with the offset.
+    aa_master = bpy.data.objects.new(f"{name}_Anchor_START_MASTER", None)
+    ab_master = bpy.data.objects.new(f"{name}_Anchor_END_MASTER", None)
+    for o in [aa_master, ab_master]:
+         dim_coll.objects.link(o)
+         o.parent = root
+         o["fcd_is_dimension_anchor"] = "MASTER"
+    aa_master.location = (0, 0, 0)
+    ab_master.location = (0, 0, initial_length)
+    aa_master["fcd_anchor_type"] = "START"
+    ab_master["fcd_anchor_type"] = "END"
     
-    # 3. Spawn Anchor End (Triangle, Child of Root)
-    ab = bpy.data.objects.new(f"{name}_End", tri_mesh.copy())
-    dim_coll.objects.link(ab)
-    ab.parent = root
-    ab["fcd_is_dimension_anchor"] = "END"
-    # End is at the target length, rotated 180 to point at the target
-    ab.location = (0, 0, initial_length)
-    ab.rotation_euler = (math.radians(180), 0, 0) # Flip to point to P2
+    # 4. Create Visual Components (Offset-able)
+    def create_arrowhead(suffix, rot_x):
+        mesh = core.get_or_create_arrow_mesh()
+        obj = bpy.data.objects.new(f"{name}_Arrow_{suffix}", mesh)
+        dim_coll.objects.link(obj)
+        obj.parent = root
+        obj["fcd_is_dimension_anchor"] = "VISUAL"
+        obj["fcd_anchor_type"] = suffix # START or END
+        obj.rotation_euler = (math.radians(rot_x), 0, 0)
+        return obj
+
+    # Arrow A is at the START (local z=0). Its cone tip points in -Z (rot_x=180°),
+    # meaning it points AWAY from p2 (outward).  But now root +Z goes p1→p2,
+    # so the cone tip at rot_x=0° already points in +Z (away from centre at p1
+    # end meaning INTO the dimension).  We must FLIP: START=0° → tip at -Z → outward.
+    # END=180° → tip at +Z at z=initial_length → outward from centre at p2 end.
+    arrow_a = create_arrowhead("START", 0.0)
+    arrow_b = create_arrowhead("END", 180.0)
     
     # AI Editor Note: Design Strategy - Dedicated Hook Empty.
     # We parent mechatronic parts to this hook which NEVER scales, 
@@ -669,25 +694,27 @@ def generate_smart_dimension_parametric(context, p1, p2, name="Dimension", paren
     hook = bpy.data.objects.new(f"{name}_EndHook", None)
     dim_coll.objects.link(hook)
     hook.parent = root
-    hook["fcd_is_dimension_hook"] = "END"
+    hook["fcd_is_dimension_anchor"] = "HOOK"
     hook.empty_display_type = 'CIRCLE'
     hook.empty_display_size = 0.02
     hook.location = (0, 0, initial_length)
     
     # 4. Extension Lines (Drafting legs from arrowheads to objects)
-    def create_ext_line(name_suffix, loc_z, offset_y):
+    def create_ext_line(name_suffix, loc_z, offset_y, ext_type):
         mesh = create_dimension_line_mesh(f"{name}_{name_suffix}")
         obj = bpy.data.objects.new(f"{name}_{name_suffix}", mesh)
         dim_coll.objects.link(obj)
         obj.parent = root
         obj["fcd_is_extension_line"] = True
+        obj["fcd_extension_type"] = ext_type
         # Start at arrowhead and point back to object
         obj.location = (0, offset_y, loc_z)
         obj.rotation_euler = (math.radians(90), 0, 0) 
         return obj
 
-    ext_a = create_ext_line("ExtA", 0.0, scene.fcd_dim_offset)
-    ext_b = create_ext_line("ExtB", initial_length, scene.fcd_dim_offset)
+    ext_a = create_ext_line("ExtA", 0.0, scene.fcd_dim_offset, "START")
+    ext_b = create_ext_line("ExtB", initial_length, scene.fcd_dim_offset, "END")
+    
 
     # 5. Procedural Dimension Line (Body, Child of Root)
     line_mesh = create_dimension_line_mesh(name)
@@ -705,30 +732,67 @@ def generate_smart_dimension_parametric(context, p1, p2, name="Dimension", paren
     dim_coll.objects.link(txt_obj)
     txt_obj.parent = root
     txt_obj["fcd_is_dimension"] = True
-    txt_obj.rotation_euler = (math.radians(90), 0, math.radians(180))
+    txt_obj.rotation_euler = (math.radians(90), 0, 0)
     
     # Initial Properties
+    # AI Editor Note: CRITICAL - update_arrow_settings and update_dimension_length
+    # both resolve dim_props from ROOT (obj.parent), NOT from txt_obj itself.
+    # We must write all initial values to BOTH the label's dim_props (for UI) AND
+    # the root's dim_props (which the layout/sync functions actually read from).
+    v_arrow = scene.fcd_dim_arrow_scale
+    v_text = scene.fcd_dim_text_scale
+    v_thick = scene.fcd_dim_line_thickness
+    v_offset = scene.fcd_dim_offset
+    
+    # Auto-Scaling logic on spawn
+    if scene.fcd_dim_auto_scale_on_spawn:
+        v_arrow = initial_length * 0.2
+        v_text = initial_length * 0.1
+        v_thick = initial_length * 0.002
+        v_offset = initial_length * 0.1
+        # Guards
+        if v_arrow < 0.001: v_arrow = 0.001
+        if v_text < 0.001: v_text = 0.001
+
     dim_props = txt_obj.fcd_pg_dim_props
     dim_props.length = initial_length
-    dim_props.arrow_scale = scene.fcd_dim_arrow_scale
-    dim_props.text_scale = scene.fcd_dim_text_scale
-    dim_props.offset = scene.fcd_dim_offset
-    dim_props.line_thickness = 0.002
+    dim_props.arrow_scale = v_arrow
+    dim_props.text_scale = v_text
+    dim_props.offset = v_offset
+    dim_props.line_thickness = v_thick
+
+    root_dim_props = root.fcd_pg_dim_props
+    root_dim_props.length = initial_length
+    root_dim_props.arrow_scale = v_arrow
+    root_dim_props.text_scale = v_text
+    root_dim_props.offset = v_offset
+    root_dim_props.line_thickness = v_thick
     
-    # Trigger initial update
-    core.update_arrow_settings(txt_obj)
+    # REAL-TIME SYNC: If a slave object is provided (parent_b), add a
+    # COPY_LOCATION constraint so the end anchor follows it.
+    # Guard against None to prevent AttributeError on BBox-only dimensions.
+    if parent_b and parent_b[0]:
+        target_mesh_hook = parent_b[0]
+        con = target_mesh_hook.constraints.new('COPY_LOCATION')
+        con.target = ab_master
+        con.use_offset = False
+    
+    # Pass 4: Final visual pass
+    if hasattr(core, 'update_arrow_settings'):
+         core.update_arrow_settings(txt_obj)
     
     # Assign Material
-    core.get_or_create_text_material(txt_obj)
-    aa.active_material = core.get_or_create_text_material(txt_obj)
-    ab.active_material = aa.active_material
-    dim_line.active_material = aa.active_material
-    ext_a.active_material = aa.active_material
-    ext_b.active_material = aa.active_material
+    mat = core.get_or_create_text_material(txt_obj)
+    txt_obj.active_material = mat
+    arrow_a.active_material = mat
+    arrow_b.active_material = mat
+    dim_line.active_material = mat
+    if ext_a: ext_a.active_material = mat
+    if ext_b: ext_b.active_material = mat
     
     # 6. Visibility Enhancements (Drafting Style)
     # AI Editor Note: Set 'In Front' to ensure visibility even inside targets
-    for o in [root, aa, ab, dim_line, txt_obj, hook, ext_a, ext_b]:
+    for o in [root, arrow_a, arrow_b, dim_line, txt_obj, hook, ext_a, ext_b]:
          if o:
               o.show_in_front = True
               # Make them stand out in Solid mode
@@ -753,8 +817,10 @@ def generate_smart_dimension_parametric(context, p1, p2, name="Dimension", paren
         # 2. Assign Parent
         root.parent = obj_a
         
-        # Verify World Matrix after parenting assignment
-        context.view_layer.update()
+        # MANDATORY SYNC: Blender 4.5+ requires view_layer update to resolve matrix_parent_inverse 
+        # before we can safely restore world matrices.
+        context.view_layer.update() 
+        dg.update()
         
         if type_a == 'VERTEX':
              # 3. Mode Selection
@@ -768,44 +834,32 @@ def generate_smart_dimension_parametric(context, p1, p2, name="Dimension", paren
              root.parent_vertices[2] = index_a
              
         # Restore precise world transformation
-        # matrix_parent_inverse SHOULD be calculated against the evaluated armature/mesh matrix
+        # matrix_parent_inverse MUST be calculated against the evaluated armature/mesh matrix
         root.matrix_parent_inverse = obj_a.matrix_world.inverted()
+        context.view_layer.update() # settlement
+        
         root.matrix_world = old_mat.copy()
         
         # Pass 4: Final verification update
         context.view_layer.update()
         dg.update()
             
-    # Parent the second object/element to the EndHook.
+    # Parent the second object/element to the EndHook (Conditional)
     if parent_b:
         obj_b, type_b, index_b = parent_b
         if obj_b:
              # Ensure depsgraph is current
              dg = context.evaluated_depsgraph_get()
              dg.update()
-             
-             old_matrix = obj_b.matrix_world.copy()
-             obj_b.parent = hook
-             
-             if type_b == 'VERTEX':
-                  # AI Editor Note: When measuring parts of a single mesh in Edit Mode,
-                  # we cannot parent the mesh object to its own Hook (circular dependency).
-                  # For single-object Edit Mode, we leave the Hook as a visual guide.
-                  pass
-             else:
-                  # Mechatronic behavior: Second object moves with the arrow head
-                  obj_b.matrix_parent_inverse = hook.matrix_world.inverted()
-             
-             obj_b.matrix_world = old_matrix
-             context.view_layer.update()
              context.view_layer.update()
             
     # Finalize setup visual settings
     if hasattr(core, 'update_arrow_settings'):
+         # Extra Guard: Force one last layer sync to ensure child component math is World-Accurate
+         context.view_layer.update()
          core.update_arrow_settings(txt_obj)
     
-    # AI Editor Note: Use direct selection to avoid context errors in Edit Mode.
-    # bpy.ops.object.select_all(action='DESELECT') can fail if in Edit Mode.
+    # Selection Sync
     for o in context.selected_objects:
         o.select_set(False)
     txt_obj.select_set(True)
