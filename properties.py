@@ -165,7 +165,7 @@ class FCD_PG_Dimension_Props(bpy.types.PropertyGroup):
     Uses timer-based updates to maintain UI responsiveness.
     """
     arrow_scale: bpy.props.FloatProperty(name="Arrow Scale", default=0.1, min=0.001, update=update_arrow_settings_timer)
-    text_scale: bpy.props.FloatProperty(name="Text Size", default=0.1, min=0.001, soft_max=2.0, update=update_arrow_settings_timer)
+    text_scale: bpy.props.FloatProperty(name="Text Size", default=0.1, min=0.0, update=update_arrow_settings_timer)
     line_thickness: bpy.props.FloatProperty(name="Line Thickness", default=0.002, min=0.0, unit='LENGTH', update=update_arrow_settings_timer)
     offset: bpy.props.FloatProperty(name="Offset from Target", default=0.1, unit='LENGTH', update=update_arrow_settings_timer)
     text_color: bpy.props.FloatVectorProperty(name="Label Color", subtype='COLOR', default=(0.0, 0.0, 0.0, 1.0), size=4, min=0.0, max=1.0, update=update_text_color)

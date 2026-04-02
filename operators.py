@@ -2835,6 +2835,7 @@ class FCD_OT_Add_Dimension(bpy.types.Operator):
         initial_mode = context.mode
         initial_active = context.active_object
         scene = context.scene
+        dim_was_generated = False  # Flag to skip workspace restoration if a new dimension was spawned
 
         try:
             # ======================================================================
@@ -2929,10 +2930,26 @@ class FCD_OT_Add_Dimension(bpy.types.Operator):
                     bpy.ops.object.mode_set(mode='OBJECT')
                 bpy.ops.object.select_all(action='DESELECT')
                 
-                generators.generate_smart_dimension_parametric(
+                dim_result = generators.generate_smart_dimension_parametric(
                     context, p1, p2, 
                     parent_a=(hook_a_obj, 'OBJECT', 0), 
                     parent_b=(hook_b_obj, 'OBJECT', 0))
+                
+                if dim_result:
+                    def _deferred_select_edit():
+                        try:
+                            if dim_result.name in bpy.data.objects:
+                                bpy.ops.object.select_all(action='DESELECT')
+                                dim_result.select_set(True)
+                                bpy.context.view_layer.objects.active = dim_result
+                                bpy.context.view_layer.update()
+                                for area in bpy.context.screen.areas:
+                                    if area.type in ['VIEW_3D', 'PROPERTIES']:
+                                        area.tag_redraw()
+                        except: pass
+                        return None
+                    bpy.app.timers.register(_deferred_select_edit, first_interval=0.2)
+                    dim_was_generated = True
                 
                 return {'FINISHED'}
 
@@ -2969,7 +2986,22 @@ class FCD_OT_Add_Dimension(bpy.types.Operator):
 
             if p1 is not None and p2 is not None:
                 bpy.ops.object.select_all(action='DESELECT')
-                generators.generate_smart_dimension_parametric(context, p1, p2, parent_a=parent_a, parent_b=parent_b)
+                dim_result = generators.generate_smart_dimension_parametric(context, p1, p2, parent_a=parent_a, parent_b=parent_b)
+                if dim_result:
+                    def _deferred_select_obj():
+                        try:
+                            if dim_result.name in bpy.data.objects:
+                                bpy.ops.object.select_all(action='DESELECT')
+                                dim_result.select_set(True)
+                                bpy.context.view_layer.objects.active = dim_result
+                                bpy.context.view_layer.update()
+                                for area in bpy.context.screen.areas:
+                                    if area.type in ['VIEW_3D', 'PROPERTIES']:
+                                        area.tag_redraw()
+                        except: pass
+                        return None
+                    bpy.app.timers.register(_deferred_select_obj, first_interval=0.2)
+                    dim_was_generated = True
                 return {'FINISHED'}
 
             # --- FALLBACK: Bounding Box on single active mesh ---
@@ -2989,6 +3021,8 @@ class FCD_OT_Add_Dimension(bpy.types.Operator):
             min_z, max_z = min(zs), max(zs)
             mid_x, mid_y = (min_x + max_x) / 2, (min_y + max_y) / 2
 
+            # Collect all generated dims to handle selection focus
+            new_dims = []
             for ax in axes_to_gen:
                 if ax == 'X':
                     p1 = mathutils.Vector((min_x, mid_y, max_z + offset_val))
@@ -2999,7 +3033,36 @@ class FCD_OT_Add_Dimension(bpy.types.Operator):
                 else:
                     p1 = mathutils.Vector((max_x + offset_val, mid_y, min_z))
                     p2 = mathutils.Vector((max_x + offset_val, mid_y, max_z))
-                generators.generate_smart_dimension_parametric(context, p1, p2, name=f"BBox_{ax}", parent_a=(obj, 'OBJECT', None))
+                
+                dim = generators.generate_smart_dimension_parametric(context, p1, p2, name=f"BBox_{ax}", parent_a=(obj, 'OBJECT', None))
+                if dim: new_dims.append(dim)
+
+            if new_dims:
+                # Select the last generated dimension (host label) so properties appear instantly
+                last_host = new_dims[-1]
+                if last_host:
+                    # Defer selection slightly to ensure Blender panel updates properly
+                    def deferred_select():
+                        try:
+                            # Re-verify existence in case of undo/cancel
+                            if last_host.name in bpy.data.objects:
+                                bpy.ops.object.select_all(action='DESELECT')
+                                last_host.select_set(True)
+                                bpy.context.view_layer.objects.active = last_host
+                                
+                                # Force redraw of all GUI components
+                                for area in bpy.context.screen.areas:
+                                     if area.type in ['VIEW_3D', 'PROPERTIES']:
+                                          area.tag_redraw()
+                                
+                                # CRITICAL: Workspace Update
+                                bpy.context.view_layer.update()
+                        except: pass
+                        return None
+                    bpy.app.timers.register(deferred_select, first_interval=0.2)
+                
+                # Signal to the finally block to skip workspace restoration
+                dim_was_generated = True
 
             return {'FINISHED'}
 
@@ -3009,7 +3072,7 @@ class FCD_OT_Add_Dimension(bpy.types.Operator):
         finally:
             # --- Categorical Workspace Enforcement (FCD v1.0.6) ---
             try:
-                if initial_active and initial_active.name in bpy.data.objects:
+                if not dim_was_generated and initial_active and initial_active.name in bpy.data.objects:
                     target_obj = bpy.data.objects[initial_active.name]
                     if context.view_layer.objects.active != target_obj:
                         context.view_layer.objects.active = target_obj
@@ -3027,11 +3090,14 @@ class FCD_OT_Add_Dimension(bpy.types.Operator):
                         pass
 
                     if initial_mode and "EDIT" in initial_mode:
-                        if context.mode != initial_mode:
-                            try:
-                                bpy.ops.object.mode_set(mode='EDIT')
-                            except:
-                                pass
+                        # AI Editor Note: Logic Change - Context Switching.
+                        # If a dimension was created, stay in OBJECT mode to show properties.
+                        if not new_dims:
+                            if context.mode != initial_mode:
+                                try:
+                                    bpy.ops.object.mode_set(mode='EDIT')
+                                except:
+                                    pass
                     elif initial_mode == 'OBJECT':
                         if context.mode != 'OBJECT':
                             try:

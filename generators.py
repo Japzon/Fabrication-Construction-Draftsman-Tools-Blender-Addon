@@ -728,6 +728,8 @@ def generate_smart_dimension_parametric(context, p1, p2, name="Dimension", paren
     
     # 5. Label Object (FONT Curve for visibility)
     txt_curve = bpy.data.curves.new(f"{name}_Label_Curve", 'FONT')
+    txt_curve.align_x = 'CENTER'
+    txt_curve.align_y = 'CENTER' # Vertical centering for stable origin pivot
     txt_obj = bpy.data.objects.new(f"{name}_Label", txt_curve)
     dim_coll.objects.link(txt_obj)
     txt_obj.parent = root

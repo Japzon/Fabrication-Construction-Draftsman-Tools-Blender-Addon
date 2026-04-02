@@ -1149,16 +1149,29 @@ def update_arrow_settings(obj):
             
             if hasattr(child.data, "align_x"):
                  child.data.align_x = dim_props.text_alignment
+            if hasattr(child.data, "align_y"):
+                 child.data.align_y = 'CENTER' # Anchor text to its midline for rotation stability
             
-            # Text readability logic
-            base_dir = offset_local_dir.copy()
-            base_rot = base_dir.to_track_quat('Z', 'Y').to_euler()
+            # Text Orientation System (Parallel Alignment).
+            # Logic: Text 'X' (reading path) aligns with Dimension 'Z' (assembly track).
+            # Logic: Text 'Y' (height/up) aligns with Offset Direction (outward). 
+            # Logic: Text 'Z' (forward) aligns with Cross Product (depth towards viewer).
+            # This ensures text 'follows' the drafting path like typical architectural notation.
+            
+            vec_x = mathutils.Vector((0, 0, 1)) # Assembly direction
+            vec_y = offset_local_dir.normalized()
+            vec_z = vec_x.cross(vec_y).normalized()
+            
+            # Construct a pure orthonormal orientation matrix (World-to-Text-Basis)
+            m = mathutils.Matrix((vec_x, vec_y, vec_z)).transposed()
+            base_rot = m.to_euler()
+            
             if dim_props.flip_text:
                 base_rot.rotate_axis('X', math.pi)
             
-            # Apply orientation
-            user_mat = mathutils.Euler(dim_props.text_rotation).to_matrix()
-            child.rotation_euler = (base_rot.to_matrix() @ user_mat).to_euler()
+            # Apply user-defined Euler rotation ('XYZ' order) on top of the drafting frame
+            user_euler = mathutils.Euler(dim_props.text_rotation, 'XYZ')
+            child.rotation_euler = (base_rot.to_matrix() @ user_euler.to_matrix()).to_euler()
             
             # Sync material & visibility
             mat = child.active_material
@@ -1167,6 +1180,10 @@ def update_arrow_settings(obj):
                  child.show_in_front = True
                 
     root.update_tag()
+    
+    # AI Editor Note: Sync Flip Trigger. 
+    # Must call the atomic role-swap logic here to handle 'is_flipped' changes.
+    sync_dimension_flipping(root)
 
 
 def sync_dimension_flipping(obj):
@@ -1223,8 +1240,8 @@ def sync_dimension_flipping(obj):
     }
     
     root_name = root.name
-    p_name = target_parent.name
-    s_name = target_slave.name
+    p_name = obj_a.name
+    s_name = obj_b.name
     
     def delayed_rebuild():
          global _dim_update_guard
@@ -1281,12 +1298,21 @@ def sync_dimension_flipping(obj):
                         try: setattr(new_props, key, val)
                         except: pass
                    # Reset flip state on the new assembly to avoid recursion
-                   new_props.is_flipped = False
+                   # Selection Focus: keeping properties open
+                   if context.view_layer:
+                        bpy.ops.object.select_all(action="DESELECT")
+                        new_dim.select_set(True)
+                        context.view_layer.objects.active = new_dim
+                        context.view_layer.update()
+                        for area in bpy.context.screen.areas:
+                             if area.type in ["PROPERTIES", "VIEW_3D"]: area.tag_redraw()
                    
               if prev_mode != 'OBJECT': bpy.ops.object.mode_set(mode=prev_mode)
                    
          except Exception as e:
               print(f"[FCD] Reconstructive Flip Failure: {e}")
+         finally:
+              _dim_update_guard = False
          return None
 
     # Defer execution to clear the current property update stack
