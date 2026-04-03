@@ -676,28 +676,64 @@ class FCD_OT_CalculateCenterOfMass(bpy.types.Operator):
                 if coll_obj and coll_obj.parent == obj:
                     target_obj = coll_obj
             
-            # Identify Property Owner
-            if not hasattr(source, "fcd_pg_mech_props"):
-                continue
-
-            # 2. Calculate COM from mesh volume
-            eval_obj = target_obj.evaluated_get(depsgraph)
-            temp_mesh = bpy.data.meshes.new_from_object(eval_obj)
-            
-            bm = bmesh.new()
-            bm.from_mesh(temp_mesh)
-            volume = abs(bm.calc_volume())
-            
-            if bm.verts:
-                # Use bounding center for simplicity on collision primitives
-                min_v = mathutils.Vector((min(v.co.x for v in bm.verts), min(v.co.y for v in bm.verts), min(v.co.z for v in bm.verts)))
-                max_v = mathutils.Vector((max(v.co.x for v in bm.verts), max(v.co.y for v in bm.verts), max(v.co.z for v in bm.verts)))
-                com_local = (min_v + max_v) / 2
-            else:
-                com_local = mathutils.Vector((0, 0, 0))
-                
-            bm.free()
-            bpy.data.meshes.remove(temp_mesh)
+             # Identify Property Owner
+             if not hasattr(source, "fcd_pg_mech_props"):
+                 continue
+ 
+-            # 2. Calculate COM from mesh volume
+-            eval_obj = target_obj.evaluated_get(depsgraph)
+-            temp_mesh = bpy.data.meshes.new_from_object(eval_obj)
+-            
+-            bm = bmesh.new()
+-            bm.from_mesh(temp_mesh)
+-            volume = abs(bm.calc_volume())
+-            
+-            if bm.verts:
+-                # Use bounding center for simplicity on collision primitives
+-                min_v = mathutils.Vector((min(v.co.x for v in bm.verts), min(v.co.y for v in bm.verts), min(v.co.z for v in bm.verts)))
+-                max_v = mathutils.Vector((max(v.co.x for v in bm.verts), max(v.co.y for v in bm.verts), max(v.co.z for v in bm.verts)))
+-                com_local = (min_v + max_v) / 2
+-            else:
+-                com_local = mathutils.Vector((0, 0, 0))
+-                
+-            bm.free()
+-            bpy.data.meshes.remove(temp_mesh)
++            # 2. Calculate COM & Volume from FULL RESOLUTION
++            # AI Editor Note: We temporarily suppress the simplification and thickness
++            # modifiers to ensure physics integration uses the actual manifold volume.
++            mod_dec = target_obj.modifiers.get("FCD_Collision_Simplify")
++            mod_thick = target_obj.modifiers.get("FCD_Collision_Thickness")
++            
++            old_dec = mod_dec.show_viewport if mod_dec else True
++            old_thick = mod_thick.show_viewport if mod_thick else True
++            
++            if mod_dec: mod_dec.show_viewport = False
++            if mod_thick: mod_thick.show_viewport = False
++            
++            try:
++                # Re-evaluate for high-fidelity snapshot
++                dg = context.evaluated_depsgraph_get()
++                eval_obj = target_obj.evaluated_get(dg)
++                temp_mesh = bpy.data.meshes.new_from_object(eval_obj)
++                
++                bm = bmesh.new()
++                bm.from_mesh(temp_mesh)
++                volume = abs(bm.calc_volume())
++                
++                if bm.verts:
++                    # Use bounding center for simplicity on collision primitives
++                    min_v = mathutils.Vector((min(v.co.x for v in bm.verts), min(v.co.y for v in bm.verts), min(v.co.z for v in bm.verts)))
++                    max_v = mathutils.Vector((max(v.co.x for v in bm.verts), max(v.co.y for v in bm.verts), max(v.co.z for v in bm.verts)))
++                    com_local = (min_v + max_v) / 2
++                else:
++                    com_local = mathutils.Vector((0, 0, 0))
++                    
++                bm.free()
++                bpy.data.meshes.remove(temp_mesh)
++            finally:
++                # Restore visual drafting state
++                if mod_dec: mod_dec.show_viewport = old_dec
++                if mod_thick: mod_thick.show_viewport = old_thick
             
             # 3. Apply to Source Properties
             inertial = source.fcd_pg_mech_props.inertial
@@ -801,7 +837,26 @@ class FCD_OT_CalculateInertia(bpy.types.Operator):
                 continue
 
             props = source.fcd_pg_mech_props
-            dims = target_obj.dimensions
+            
+            # --- HIGH FIDELITY DIMENSION CAPTURE ---
+            # Temporarily disable modifiers to get 'full resolution' dimensions
+            mod_dec = target_obj.modifiers.get("FCD_Collision_Simplify")
+            mod_thick = target_obj.modifiers.get("FCD_Collision_Thickness")
+            
+            old_dec = mod_dec.show_viewport if mod_dec else True
+            old_thick = mod_thick.show_viewport if mod_thick else True
+            
+            if mod_dec: mod_dec.show_viewport = False
+            if mod_thick: mod_thick.show_viewport = False
+            
+            try:
+                # obj.dimensions reflects the current evaluated state
+                context.view_layer.update() 
+                dims = target_obj.dimensions.copy()
+            finally:
+                if mod_dec: mod_dec.show_viewport = old_dec
+                if mod_thick: mod_thick.show_viewport = old_thick
+
             self._calculate_for_props(props, dims)
             count += 1
             
