@@ -115,10 +115,11 @@ def update_dimension_length_timer(self, context):
         return None
     bpy.app.timers.register(dispatch, first_interval=0.03)
 
-def update_cursor_local_wrapper(self, context):
-    """Lean dispatcher to core module for cursor tool."""
-    from . import core
-    core.update_local_cursor_from_tool(self, context)
+def update_collision_decimate(self, context):
+    """Updates the collision mesh decimation factor. Returns None to satisfy Blender PG protocol."""
+    if context.active_object:
+        bpy.ops.fcd.generate_collision_mesh()
+    return None
 
 # ------------------------------------------------------------------------
 #   Property Group Definitions (FCD PG Mandate)
@@ -149,7 +150,7 @@ class FCD_PG_Collision_Properties(bpy.types.PropertyGroup):
         name="Simplification Ratio", 
         description="Ratio of triangles to keep (1.0 = original, 0.1 = 10% polygons)", 
         default=0.5, min=0.0, max=1.0, 
-        update=lambda self, context: bpy.ops.fcd.generate_collision_mesh() if context.active_object else None
+        update=update_collision_decimate
     )
 
 class FCD_PG_Inertial_Properties(bpy.types.PropertyGroup):
