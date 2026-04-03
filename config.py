@@ -253,3 +253,40 @@ BONE_AXES: List[Tuple[str, str, str]] = [
     ('Y', "Local Y", "Align bone along local Y axis"),
     ('Z', "Local Z", "Align bone along local Z axis")
 ]
+
+# --- Physics Element Data (Density in g/cm³) ---
+# Values for gases and liquids represent their solid/frozen state density.
+ELEMENT_DATA: Dict[str, Dict[str, float]] = {
+    'METALS': {
+        'Actinium': 10.07, 'Aluminium': 2.70, 'Americium': 13.67, 'Barium': 3.51, 
+        'Berkelium': 14.78, 'Beryllium': 1.85, 'Bismuth': 9.78, 'Cadmium': 8.65, 
+        'Calcium': 1.55, 'Californium': 15.1, 'Cerium': 6.69, 'Cesium': 1.88, 
+        'Chromium': 7.19, 'Cobalt': 8.90, 'Copper': 8.96, 'Curium': 13.51, 
+        'Dysprosium': 8.55, 'Einsteinium': 8.84, 'Erbium': 9.07, 'Europium': 5.24, 
+        'Gadolinium': 7.90, 'Gallium': 5.91, 'Gold': 19.30, 'Hafnium': 13.31, 
+        'Holmium': 8.80, 'Indium': 7.31, 'Iridium': 22.56, 'Iron': 7.87, 
+        'Lanthanum': 6.15, 'Lead': 11.34, 'Lithium': 0.53, 'Lutetium': 9.84, 
+        'Magnesium': 1.74, 'Manganese': 7.47, 'Mercury': 14.18, 'Molybdenum': 10.28, 
+        'Neodymium': 7.01, 'Neptunium': 20.45, 'Nickel': 8.91, 'Niobium': 8.57, 
+        'Osmium': 22.59, 'Palladium': 12.02, 'Platinum': 21.45, 'Plutonium': 19.84, 
+        'Polonium': 9.20, 'Potassium': 0.86, 'Praseodymium': 6.64, 'Promethium': 7.26, 
+        'Protactinium': 15.37, 'Radium': 5.00, 'Rhenium': 21.02, 'Rhodium': 12.45, 
+        'Rubidium': 1.53, 'Ruthenium': 12.37, 'Samarium': 7.35, 'Scandium': 2.99, 
+        'Silver': 10.49, 'Sodium': 0.97, 'Strontium': 2.64, 'Tantalum': 16.65, 
+        'Technetium': 11.50, 'Terbium': 8.22, 'Thallium': 11.85, 'Thorium': 11.72, 
+        'Thulium': 9.32, 'Tin': 7.29, 'Titanium': 4.51, 'Tungsten': 19.25, 
+        'Uranium': 19.10, 'Vanadium': 6.11, 'Ytterbium': 6.97, 'Yttrium': 4.47, 
+        'Zinc': 7.14, 'Zirconium': 6.52
+    },
+    'NONMETALS': {
+        'Argon': 1.62, 'Bromine': 3.12, 'Carbon': 2.26, 'Chlorine': 2.03, 
+        'Fluorine': 1.70, 'Helium': 0.19, 'Hydrogen': 0.09, 'Krypton': 2.82, 
+        'Neon': 1.44, 'Nitrogen': 1.03, 'Oxygen': 1.43, 'Phosphorus': 1.82, 
+        'Radon': 4.40, 'Selenium': 4.82, 'Sulfur': 2.07, 'Xenon': 3.64
+    },
+    'SEMIMETALS': {
+        'Antimony': 6.69, 'Arsenic': 5.73, 'Astatine': 7.00, 'Boron': 2.46, 
+        'Germanium': 5.32, 'Silicon': 2.33, 'Tellurium': 6.24
+    }
+}
+

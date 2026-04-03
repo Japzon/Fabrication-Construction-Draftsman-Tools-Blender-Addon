@@ -132,44 +132,83 @@ class FCD_OT_Generate_Collision_Mesh(bpy.types.Operator):
         
         selected = [obj for obj in context.selected_objects if obj.type == 'MESH']
         count = 0
+        depsgraph = context.evaluated_depsgraph_get()
 
         for obj in selected:
-            # 3. Duplicate individual mesh or Reuse existing
-            coll_name = f"COLL_{obj.name}"
+            # 3. Identify Source vs Collision Mesh
+            source = obj
+            is_coll = obj.name.startswith("COLL_")
+            if is_coll:
+                if obj.parent:
+                    source = obj.parent
+                else:
+                    # Orphaned COLL_ object, skip or handle as source
+                    pass
+
+            coll_name = f"COLL_{source.name}"
             new_obj = bpy.data.objects.get(coll_name)
             
-            # Verify if it is OUR collision mesh (parented to source)
-            if not new_obj or new_obj.parent != obj:
-                new_mesh = obj.data.copy()
-                new_obj = bpy.data.objects.new(coll_name, new_mesh)
-                # Copy world-space transform from original
-                new_obj.matrix_world = obj.matrix_world.copy()
-                # Link & Parent
-                coll.objects.link(new_obj)
-                new_obj.parent = obj
-                new_obj.matrix_parent_inverse = obj.matrix_world.inverted()
-                # Hide and Configure
-                new_obj.hide_set(True)
-                new_obj.hide_render = True
-                new_obj.display_type = 'WIRE'
-            else:
-                # If it already exists, just update its data if it's different 
-                # (Optional: for simplicity we just update modifiers here)
-                pass
+            # --- UPDATED: REFRESH LOGIC ---
+            # AI Editor Note: To ensure the collision mesh reflects the latest source mesh
+            # (including evaluated modifiers), we always purge the old instance before 
+            # creating a fresh snapshot. This prevents 'ghost' geometry and z-fighting.
+            if new_obj and new_obj.parent == source:
+                old_mesh = new_obj.data
+                bpy.data.objects.remove(new_obj, do_unlink=True)
+                if old_mesh and old_mesh.users == 0:
+                    bpy.data.meshes.remove(old_mesh)
 
-            # 4. Add/Update Simplification (Decimate)
-            mod_name = "FCD_Collision_Simplify"
-            dec_mod = new_obj.modifiers.get(mod_name)
-            if not dec_mod:
-                dec_mod = new_obj.modifiers.new(name=mod_name, type='DECIMATE')
+            # 4. Create fresh duplication from Evaluated State (Snapshot)
+            # AI Editor Note: In Blender 4.x, creating an object directly from an evaluated mesh 
+            # (via to_mesh) results in a RuntimeError. We instead use new_from_object on an 
+            # evaluated instance to secure a permanent data-block in the main database.
+            eval_source = source.evaluated_get(depsgraph)
+            new_mesh = bpy.data.meshes.new_from_object(eval_source, preserve_all_data_layers=True, depsgraph=depsgraph)
+            new_obj = bpy.data.objects.new(coll_name, new_mesh)
             
-            # Note: We determine the ratio from the original object's properties if available
-            ratio = 0.5
-            if hasattr(obj, "fcd_pg_mech_props"):
-                ratio = obj.fcd_pg_mech_props.collision.decimate_ratio
+            # Copy world-space transform from original
+            new_obj.matrix_world = source.matrix_world.copy()
+            
+            # Link & Parent
+            coll.objects.link(new_obj)
+            new_obj.parent = source
+            new_obj.matrix_parent_inverse = source.matrix_world.inverted()
+            
+            # 5. Hide and Configure based on Global State
+            show_global = context.scene.fcd_show_collisions
+            new_obj.hide_set(not show_global)
+            new_obj.hide_render = True
+            new_obj.display_type = 'WIRE'
+            
+            # AI Editor Note: Enabling 'show_in_front' satisfies the drafting requirement 
+            # for collision meshes to always be selectable even when 'buried' inside 
+            # the visual target mesh.
+            new_obj.show_in_front = True
+
+            # 6. Add/Update Simplification (Decimate)
+            mod_name = "FCD_Collision_Simplify"
+            dec_mod = new_obj.modifiers.new(name=mod_name, type='DECIMATE')
+            
+            # 7. Add/Update Thickness (Solidify)
+            thick_mod_name = "FCD_Collision_Thickness"
+            thick_mod = new_obj.modifiers.new(name=thick_mod_name, type='SOLIDIFY')
+            
+            # AI Editor Note: Configuring 'Solidify' to act as an external shell
+            # as per user preference (Positive Offset, Rim-only fill).
+            thick_mod.offset = 1.0
+            thick_mod.use_rim = True
+            thick_mod.use_rim_only = True
+            
+            # Note: We determine the ratio from the source object's properties
+            ratio = 1.0
+            thickness = 0.0
+            if hasattr(source, "fcd_pg_mech_props"):
+                coll_props = source.fcd_pg_mech_props.collision
+                ratio = coll_props.decimate_ratio
+                thickness = coll_props.thickness
             
             dec_mod.ratio = ratio
-            
+            thick_mod.thickness = thickness
             count += 1
 
         # 7. Finalize Selection (keep original selected for further work)
@@ -177,7 +216,51 @@ class FCD_OT_Generate_Collision_Mesh(bpy.types.Operator):
         if context.mode != initial_mode:
             bpy.ops.object.mode_set(mode=initial_mode)
 
-        self.report({'INFO'}, f"Generated {count} collision mesh(es) in '{col_name}'.")
+        self.report({'INFO'}, f"Synchronized {count} collision mesh(es) in '{col_name}'.")
+        return {'FINISHED'}
+
+class FCD_OT_Purge_Collision(bpy.types.Operator):
+    """Deletes existing collision mesh(es) for selected object(s) to clean up simulation data."""
+    bl_idname = "fcd.purge_collision"
+    bl_label = "Purge Collision (Selected)"
+    bl_description = "Delete the 'COLL_' collision mesh associated with the selected part(s)"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.selected_objects
+
+    def execute(self, context):
+        count = 0
+        # Capture reference set of potential sources first to avoid StructRNA errors
+        # when objects are removed from the selection collection mid-loop.
+        sources = set()
+        for obj in context.selected_objects:
+            try:
+                source = obj
+                if obj.name.startswith("COLL_") and obj.parent:
+                    source = obj.parent
+                if source:
+                    sources.add(source)
+            except ReferenceError:
+                continue
+        
+        for source in sources:
+            try:
+                coll_name = f"COLL_{source.name}"
+                coll_obj = bpy.data.objects.get(coll_name)
+                
+                # Only purge if it truly belongs to the selected part
+                if coll_obj and coll_obj.parent == source:
+                    mesh = coll_obj.data
+                    bpy.data.objects.remove(coll_obj, do_unlink=True)
+                    if mesh and mesh.users == 0:
+                        bpy.data.meshes.remove(mesh)
+                    count += 1
+            except ReferenceError:
+                continue
+        
+        self.report({'INFO'}, f"Purged {count} collision mesh(es).")
         return {'FINISHED'}
 
 class FCD_OT_Register_Asset_Catalog(bpy.types.Operator):
@@ -559,32 +642,88 @@ class FCD_OT_CalculateCenterOfMass(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context: bpy.types.Context) -> bool:
+        obj = context.active_object
         if context.mode == 'POSE':
-            bones = context.selected_pose_bones if context.selected_pose_bones else [context.active_pose_bone]
-            return any(bone and len(get_all_children_objects(bone, context)) > 0 for bone in bones)
-        return False
+            return context.active_pose_bone is not None
+        return obj is not None and (obj.name.startswith("COLL_") or (hasattr(obj, "fcd_pg_mech_props") and obj.fcd_pg_mech_props.is_part))
 
     def execute(self, context: bpy.types.Context) -> Set[str]:
-        bones_to_process = context.selected_pose_bones if context.selected_pose_bones else [context.active_pose_bone]
+        # Handle Pose Mode (Classic Bone-centric)
+        if context.mode == 'POSE':
+            return self.execute_pose_mode(context)
         
+        # Handle Object Mode (New Mesh-centric)
+        return self.execute_object_mode(context)
+
+    def execute_object_mode(self, context):
+        selected = context.selected_objects
+        if not selected:
+            return {'CANCELLED'}
+            
+        count = 0
+        depsgraph = context.evaluated_depsgraph_get()
+        
+        for obj in selected:
+            source = obj
+            target_obj = obj
+            
+            # 1. Identify Target (measure collision mesh if available)
+            if obj.name.startswith("COLL_") and obj.parent:
+                source = obj.parent
+            else:
+                coll_name = f"COLL_{obj.name}"
+                coll_obj = bpy.data.objects.get(coll_name)
+                if coll_obj and coll_obj.parent == obj:
+                    target_obj = coll_obj
+            
+            # Identify Property Owner
+            if not hasattr(source, "fcd_pg_mech_props"):
+                continue
+
+            # 2. Calculate COM from mesh volume
+            eval_obj = target_obj.evaluated_get(depsgraph)
+            temp_mesh = bpy.data.meshes.new_from_object(eval_obj)
+            
+            bm = bmesh.new()
+            bm.from_mesh(temp_mesh)
+            volume = abs(bm.calc_volume())
+            
+            if bm.verts:
+                # Use bounding center for simplicity on collision primitives
+                min_v = mathutils.Vector((min(v.co.x for v in bm.verts), min(v.co.y for v in bm.verts), min(v.co.z for v in bm.verts)))
+                max_v = mathutils.Vector((max(v.co.x for v in bm.verts), max(v.co.y for v in bm.verts), max(v.co.z for v in bm.verts)))
+                com_local = (min_v + max_v) / 2
+            else:
+                com_local = mathutils.Vector((0, 0, 0))
+                
+            bm.free()
+            bpy.data.meshes.remove(temp_mesh)
+            
+            # 3. Apply to Source Properties
+            inertial = source.fcd_pg_mech_props.inertial
+            inertial.volume_m3 = volume
+            # Convert g/cm3 to kg/m3 for mass calculation
+            inertial.mass = volume * (inertial.custom_mass_gcm3 * 1000.0)
+            inertial.center_of_mass = com_local
+            count += 1
+            
+        self.report({'INFO'}, f"Calculated COM & Mass for {count} object(s)")
+        return {'FINISHED'}
+
+    def execute_pose_mode(self, context):
+        bones_to_process = context.selected_pose_bones if context.selected_pose_bones else [context.active_pose_bone]
         count = 0
         for pbone in bones_to_process:
             if not pbone: continue
-                
             child_meshes = get_all_children_objects(pbone, context)
-            if not child_meshes:
-                continue
+            if not child_meshes: continue
 
-            # Calculate the weighted average of the centers of volume
             total_volume = 0
             weighted_center = mathutils.Vector((0, 0, 0))
 
             for obj in child_meshes:
-                # Ensure the object has its transformations evaluated
                 depsgraph = context.evaluated_depsgraph_get()
                 eval_obj = obj.evaluated_get(depsgraph)
-                
-                # Create a temporary mesh with all modifiers applied
                 temp_mesh = bpy.data.meshes.new_from_object(eval_obj)
                 if not temp_mesh.polygons:
                     bpy.data.meshes.remove(temp_mesh)
@@ -592,9 +731,7 @@ class FCD_OT_CalculateCenterOfMass(bpy.types.Operator):
 
                 bm = bmesh.new()
                 bm.from_mesh(temp_mesh)
-                
                 volume = bm.calc_volume()
-                # Manual calculation of bounding box center (replaces missing bm.calc_center_bounds)
                 if bm.verts:
                     min_v = mathutils.Vector((min(v.co.x for v in bm.verts), min(v.co.y for v in bm.verts), min(v.co.z for v in bm.verts)))
                     max_v = mathutils.Vector((max(v.co.x for v in bm.verts), max(v.co.y for v in bm.verts), max(v.co.z for v in bm.verts)))
@@ -604,7 +741,6 @@ class FCD_OT_CalculateCenterOfMass(bpy.types.Operator):
                 
                 weighted_center += (obj.matrix_world @ center_local) * volume
                 total_volume += volume
-                
                 bm.free()
                 bpy.data.meshes.remove(temp_mesh)
 
@@ -615,7 +751,7 @@ class FCD_OT_CalculateCenterOfMass(bpy.types.Operator):
                 pbone.fcd_pg_kinematic_props.inertial.center_of_mass = com_local
                 count += 1
                 
-        self.report({'INFO'}, f"Calculated center of mass for {count} bone(s).")
+        self.report({'INFO'}, f"Calculated COM for {count} bone(s) via visual meshes.")
         return {'FINISHED'}
 
 
@@ -630,69 +766,122 @@ class FCD_OT_CalculateInertia(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context: bpy.types.Context) -> Set[str]:
-        bones_to_process = context.selected_pose_bones if context.selected_pose_bones else [context.active_pose_bone]
         obj = context.active_object
+        source = obj
+        target_obj = obj
         
-        count = 0
+        # 1. Identify Context and Target
+        if context.mode == 'POSE' and context.active_pose_bone:
+            return self.execute_pose_mode(context)
         if context.mode == 'POSE':
-            for pbone in bones_to_process:
-                if not pbone: continue
-                props = pbone.fcd_pg_kinematic_props
-                
-                # For bones, we need to find the meshes parented to it to get dimensions
-                child_meshes = get_all_children_objects(pbone, context)
-                if not child_meshes: continue
-                
-                # Calculate bounding box of all children meshes in bone local space
-                link_frame_matrix = pbone.id_data.matrix_world @ pbone.matrix
-                inv_link_matrix = link_frame_matrix.inverted()
-                
-                min_v = mathutils.Vector((float('inf'), float('inf'), float('inf')))
-                max_v = mathutils.Vector((float('-inf'), float('-inf'), float('-inf')))
-                
-                for mesh_obj in child_meshes:
-                    for v in mesh_obj.bound_box:
-                        v_world = mesh_obj.matrix_world @ mathutils.Vector(v)
-                        v_local = inv_link_matrix @ v_world
-                        for i in range(3):
-                            min_v[i] = min(min_v[i], v_local[i])
-                            max_v[i] = max(max_v[i], v_local[i])
-                
-                dims = max_v - min_v
-                self._calculate_for_props(props, dims)
-                count += 1
-        elif obj and obj.fcd_pg_mech_props.is_part:
-            self._calculate_for_props(obj.fcd_pg_mech_props, obj.dimensions)
+            return self.execute_pose_mode(context)
+        
+        return self.execute_object_mode(context)
+
+    def execute_object_mode(self, context):
+        selected = context.selected_objects
+        if not selected:
+            return {'CANCELLED'}
+            
+        count = 0
+        for obj in selected:
+            source = obj
+            target_obj = obj
+            
+            # Identify Target (measure collision mesh if available)
+            if obj.name.startswith("COLL_") and obj.parent:
+                source = obj.parent
+            else:
+                coll_name = f"COLL_{obj.name}"
+                coll_obj = bpy.data.objects.get(coll_name)
+                if coll_obj and coll_obj.parent == obj:
+                    target_obj = coll_obj
+            
+            if not hasattr(source, "fcd_pg_mech_props"):
+                continue
+
+            props = source.fcd_pg_mech_props
+            dims = target_obj.dimensions
+            self._calculate_for_props(props, dims)
             count += 1
             
-        self.report({'INFO'}, f"Calculated inertia for {count} item(s).")
+        self.report({'INFO'}, f"Calculated inertia for {count} object(s)")
+        return {'FINISHED'}
+
+    def execute_pose_mode(self, context):
+        bones_to_process = context.selected_pose_bones if context.selected_pose_bones else [context.active_pose_bone]
+        count = 0
+        for pbone in bones_to_process:
+            if not pbone: continue
+            props = pbone.fcd_pg_kinematic_props
+            child_meshes = get_all_children_objects(pbone, context)
+            if not child_meshes: continue
+
+            link_frame_matrix = pbone.id_data.matrix_world @ pbone.matrix
+            inv_link_matrix = link_frame_matrix.inverted()
+            min_v = mathutils.Vector((float('inf'), float('inf'), float('inf')))
+            max_v = mathutils.Vector((float('-inf'), float('-inf'), float('-inf')))
+            
+            for mesh_obj in child_meshes:
+                for v in mesh_obj.bound_box:
+                    v_world = mesh_obj.matrix_world @ mathutils.Vector(v)
+                    v_local = inv_link_matrix @ v_world
+                    for i in range(3):
+                        min_v[i] = min(min_v[i], v_local[i])
+                        max_v[i] = max(max_v[i], v_local[i])
+            
+            dims = max_v - min_v
+            self._calculate_for_props(props, dims)
+            count += 1
         return {'FINISHED'}
 
     def _calculate_for_props(self, props, dims):
-        mass = props.inertial.mass
-        shape = props.collision.shape
-        if shape == 'BOX':
-            ixx = (1/12) * mass * (dims.y**2 + dims.z**2)
-            iyy = (1/12) * mass * (dims.x**2 + dims.z**2)
-            izz = (1/12) * mass * (dims.x**2 + dims.y**2)
-            props.inertial.ixx = ixx
-            props.inertial.iyy = iyy
-            props.inertial.izz = izz
+        inertial = props.inertial
+        mass = inertial.mass
+        # For parts, collision shape is in fcd_pg_mech_props.collision
+        # For bones, context varies. We handle both attribute paths.
+        shape = 'BOX'
+        if hasattr(props, "collision"):
+            shape = props.collision.shape
+        
+        # Generic Bounding Box Inertia (Solid Cuboid) - used for BOX and MESH fallback
+        if shape in ['BOX', 'MESH']:
+            inertial.ixx = (1/12) * mass * (dims.y**2 + dims.z**2)
+            inertial.iyy = (1/12) * mass * (dims.x**2 + dims.z**2)
+            inertial.izz = (1/12) * mass * (dims.x**2 + dims.y**2)
         elif shape == 'CYLINDER':
             radius = (dims.x + dims.y) / 4
             height = dims.z
-            ixx = (1/12) * mass * (3 * radius**2 + height**2)
-            iyy = (1/12) * mass * (3 * radius**2 + height**2)
-            izz = (1/2) * mass * radius**2
-            props.inertial.ixx = ixx
-            props.inertial.iyy = iyy
-            props.inertial.izz = izz
+            inertial.ixx = (1/12) * mass * (3 * radius**2 + height**2)
+            inertial.iyy = (1/12) * mass * (3 * radius**2 + height**2)
+            inertial.izz = (1/2) * mass * radius**2
         elif shape == 'SPHERE':
             radius = max(dims.x, dims.y, dims.z) / 2
             val = (2/5) * mass * radius**2
-            props.inertial.ixx = val
-            props.inertial.iyy = val
-            props.inertial.izz = val
+            inertial.ixx = inertial.iyy = inertial.izz = val
+
+class FCD_OT_Calculate_All_Physics(bpy.types.Operator):
+    """Calculates both Center of Mass and Inertia Tensor for the active target."""
+    bl_idname = "fcd.calculate_all_physics"
+    bl_label = "Auto-Calculate Physics"
+    bl_description = "Automatically compute COM and Inertia Tensor from collision geometry"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        if context.mode == 'POSE':
+            return context.active_pose_bone is not None
+        obj = context.active_object
+        return obj is not None and (obj.name.startswith("COLL_") or (hasattr(obj, "fcd_pg_mech_props") and obj.fcd_pg_mech_props.is_part))
+
+    def execute(self, context):
+        # 1. Run COM
+        bpy.ops.fcd.calculate_center_of_mass()
+        # 2. Run Inertia
+        bpy.ops.fcd.calculate_inertia()
+        
+        self.report({'INFO'}, "Physics parameters (COM, Inertia) updated.")
+        return {'FINISHED'}
 
 class FCD_OT_BakeMesh(bpy.types.Operator):
     """
@@ -6451,10 +6640,10 @@ class FCD_OT_Dimension_AutoScale(bpy.types.Operator):
 def register():
     CLASSES = [
         FCD_OT_Browse_Library, FCD_OT_CreateCamera, FCD_OT_Camera_Setup, FCD_OT_Camera_Look_Through,
-        FCD_OT_Open_Asset_Browser, FCD_OT_Register_Asset_Catalog, FCD_OT_Mark_And_Upload_Asset, FCD_OT_ImportToAssetCatalog, FCD_OT_Add_Asset_Library, FCD_OT_Generate_Collision_Mesh,
+        FCD_OT_Open_Asset_Browser, FCD_OT_Register_Asset_Catalog, FCD_OT_Mark_And_Upload_Asset, FCD_OT_ImportToAssetCatalog, FCD_OT_Add_Asset_Library, FCD_OT_Generate_Collision_Mesh, FCD_OT_Purge_Collision,
         FCD_OT_LightTarget, FCD_OT_ApplyToonShader, FCD_OT_GlobalToonSharpness, FCD_OT_ToonifySelectedLights, 
         FCD_OT_Execute_AI_Prompt, FCD_OT_SetJointType, FCD_OT_CalculateCenterOfMass, 
-        FCD_OT_CalculateInertia, FCD_OT_BakeMesh, FCD_OT_ReadJointSettings, FCD_OT_ApplyJointSettings, 
+        FCD_OT_CalculateInertia, FCD_OT_Calculate_All_Physics, FCD_OT_BakeMesh, FCD_OT_ReadJointSettings, FCD_OT_ApplyJointSettings, 
         FCD_OT_SetupIK, FCD_OT_SetOriginToCursor, FCD_OT_Material_AddSmart, FCD_OT_Material_LoadTexture, 
         FCD_OT_Material_FromImage, FCD_OT_AddMappingNodes, FCD_OT_UV_SmartUnwrap, FCD_OT_Material_Merge, 
         FCD_OT_Material_Add, FCD_UL_Mat_List, FCD_UL_SlinkyHooks_List, FCD_OT_Paint_SetupBrush, 
@@ -6482,10 +6671,10 @@ def register():
 def unregister():
     CLASSES = [
         FCD_OT_Browse_Library, FCD_OT_CreateCamera, FCD_OT_Camera_Setup, FCD_OT_Camera_Look_Through,
-        FCD_OT_Open_Asset_Browser, FCD_OT_Register_Asset_Catalog, FCD_OT_Mark_And_Upload_Asset, FCD_OT_ImportToAssetCatalog, FCD_OT_Add_Asset_Library, FCD_OT_Generate_Collision_Mesh,
+        FCD_OT_Open_Asset_Browser, FCD_OT_Register_Asset_Catalog, FCD_OT_Mark_And_Upload_Asset, FCD_OT_ImportToAssetCatalog, FCD_OT_Add_Asset_Library, FCD_OT_Generate_Collision_Mesh, FCD_OT_Purge_Collision,
         FCD_OT_LightTarget, FCD_OT_ApplyToonShader, FCD_OT_GlobalToonSharpness, FCD_OT_ToonifySelectedLights, 
         FCD_OT_Execute_AI_Prompt, FCD_OT_SetJointType, FCD_OT_CalculateCenterOfMass, 
-        FCD_OT_CalculateInertia, FCD_OT_BakeMesh, FCD_OT_ReadJointSettings, FCD_OT_ApplyJointSettings, 
+        FCD_OT_CalculateInertia, FCD_OT_Calculate_All_Physics, FCD_OT_BakeMesh, FCD_OT_ReadJointSettings, FCD_OT_ApplyJointSettings, 
         FCD_OT_SetupIK, FCD_OT_SetOriginToCursor, FCD_OT_Material_AddSmart, FCD_OT_Material_LoadTexture, 
         FCD_OT_Material_FromImage, FCD_OT_AddMappingNodes, FCD_OT_UV_SmartUnwrap, FCD_OT_Material_Merge, 
         FCD_OT_Material_Add, FCD_UL_Mat_List, FCD_UL_SlinkyHooks_List, FCD_OT_Paint_SetupBrush, 

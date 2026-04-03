@@ -99,6 +99,17 @@ def update_arrow_settings_timer(self, context):
         return None
     bpy.app.timers.register(dispatch, first_interval=0.03)
 
+def update_collision_visibility(self, context):
+    """Toggles visibility for all objects in the Physics_Collisions collection."""
+    coll = bpy.data.collections.get("Physics_Collisions")
+    if not coll: return None
+    show = self.fcd_show_collisions
+    for obj in coll.objects:
+        if obj.name.startswith("COLL_"):
+            obj.hide_set(not show)
+            obj.hide_viewport = not show
+    return None
+
 def update_dimension_length_timer(self, context):
     """Dispatches length update via timer with a single-queue guard."""
     from . import core
@@ -115,11 +126,77 @@ def update_dimension_length_timer(self, context):
         return None
     bpy.app.timers.register(dispatch, first_interval=0.03)
 
-def update_collision_decimate(self, context):
-    """Updates the collision mesh decimation factor. Returns None to satisfy Blender PG protocol."""
-    if context.active_object:
-        bpy.ops.fcd.generate_collision_mesh()
+def update_collision_sync_all(self, context, prop_name: str, mod_name: str, mod_type: str, attr_name: str):
+    """Generic helper to sync collision properties across multi-selection via a guard."""
+    if context.window_manager.get("_fcd_coll_guard", False):
+        return None
+    
+    context.window_manager["_fcd_coll_guard"] = True
+    try:
+        val = getattr(self, prop_name)
+        targets = context.selected_objects
+        if not targets and hasattr(self, "id_data"):
+            targets = [self.id_data]
+            
+        for obj in targets:
+            source = obj
+            if obj.name.startswith("COLL_") and obj.parent:
+                source = obj.parent
+            
+            if not hasattr(source, "fcd_pg_mech_props"):
+                continue
+                
+            # Sync logical props
+            setattr(source.fcd_pg_mech_props.collision, prop_name, val)
+                
+            # Update modifier
+            coll_name = f"COLL_{source.name}"
+            coll_obj = bpy.data.objects.get(coll_name)
+            if coll_obj:
+                mod = coll_obj.modifiers.get(mod_name)
+                if mod and mod.type == mod_type:
+                    setattr(mod, attr_name, val)
+    finally:
+        context.window_manager["_fcd_coll_guard"] = False
     return None
+
+def update_collision_decimate(self, context):
+    return update_collision_sync_all(self, context, "decimate_ratio", "FCD_Collision_Simplify", 'DECIMATE', 'ratio')
+
+def update_collision_thickness(self, context):
+    return update_collision_sync_all(self, context, "thickness", "FCD_Collision_Thickness", 'SOLIDIFY', 'thickness')
+
+def update_element_category(self, context):
+    """Resets the element selection to the first alphabetical item of the new category."""
+    from .config import ELEMENT_DATA
+    cat = self.element_category
+    if cat in ELEMENT_DATA:
+        elements = sorted(ELEMENT_DATA[cat].keys())
+        if elements:
+            # Setting this triggers update_element_density automatically
+            self.element_type = elements[0]
+
+def update_cursor_local_wrapper(self, context):
+    """Lean dispatcher to core module for cursor tool."""
+    from . import core
+    core.update_local_cursor_from_tool(self, context)
+
+def get_element_type_items(self, context):
+    """Callback to return alphabetically sorted elements for the selected category."""
+    from .config import ELEMENT_DATA
+    cat = getattr(self, "element_category", 'METALS')
+    if cat in ELEMENT_DATA:
+        elements = sorted(ELEMENT_DATA[cat].keys())
+        return [(el, el, f"Density: {ELEMENT_DATA[cat][el]} g/cm³") for el in elements]
+    return [('NONE', "None", "")]
+
+def update_element_density(self, context):
+    """Updates the custom mass based on the chosen element preset."""
+    from .config import ELEMENT_DATA
+    cat = self.element_category
+    el = self.element_type
+    if cat in ELEMENT_DATA and el in ELEMENT_DATA[cat]:
+        self.custom_mass_gcm3 = ELEMENT_DATA[cat][el]
 
 # ------------------------------------------------------------------------
 #   Property Group Definitions (FCD PG Mandate)
@@ -149,12 +226,37 @@ class FCD_PG_Collision_Properties(bpy.types.PropertyGroup):
     decimate_ratio: bpy.props.FloatProperty(
         name="Simplification Ratio", 
         description="Ratio of triangles to keep (1.0 = original, 0.1 = 10% polygons)", 
-        default=0.5, min=0.0, max=1.0, 
+        default=1.0, min=0.0, max=1.0, 
         update=update_collision_decimate
+    )
+    thickness: bpy.props.FloatProperty(
+        name="Collision Thickness",
+        description="Offset distance/shell thickness relative to original mesh",
+        default=0.0, min=0.0, unit='LENGTH',
+        update=update_collision_thickness
     )
 
 class FCD_PG_Inertial_Properties(bpy.types.PropertyGroup):
-    mass: bpy.props.FloatProperty(name="Mass", default=1.0, min=0.0)
+    # Element Preset Selection
+    element_category: bpy.props.EnumProperty(
+        name="Category",
+        items=[('METALS', "Metals", ""), ('NONMETALS', "Nonmetals", ""), ('SEMIMETALS', "Semimetals", "")],
+        default='METALS',
+        update=update_element_category
+    )
+    element_type: bpy.props.EnumProperty(
+        name="Material Preset",
+        items=get_element_type_items,
+        update=update_element_density
+    )
+    
+    # Redundant but kept for internal calculations
+    mass: bpy.props.FloatProperty(name="Mass (kg)", default=1.0, min=0.0)
+    
+    # Primary User Input (Formerly mass_gcm3 / density_gcm3)
+    custom_mass_gcm3: bpy.props.FloatProperty(name="Custom Mass (g/cm³)", default=1.0, min=0.0)
+    
+    volume_m3: bpy.props.FloatProperty(name="Calculated Volume", default=0.0)
     center_of_mass: bpy.props.FloatVectorProperty(name="Center of Mass", subtype='TRANSLATION', unit='LENGTH', size=3)
     ixx: bpy.props.FloatProperty(name="Ixx", default=1.0)
     iyy: bpy.props.FloatProperty(name="Iyy", default=1.0)
@@ -576,6 +678,9 @@ def register():
         default='35MM'
     )
     
+    # 1.2 Collision Globals
+    bpy.types.Scene.fcd_show_collisions = bpy.props.BoolProperty(name="Show Collisions", default=True, update=update_collision_visibility)
+    
     # 1.1 Dimension Globals (FCD Scoped)
     bpy.types.Scene.fcd_dim_arrow_scale = bpy.props.FloatProperty(name="Arrow Scale", default=0.1, min=0.01)
     bpy.types.Scene.fcd_dim_text_scale = bpy.props.FloatProperty(name="Text Scale", default=0.1, min=0.01)
@@ -671,8 +776,8 @@ def register():
         "fcd_order_procedural",    # 7: Procedural Toolkit
         "fcd_order_dimensions",    # 8: Dimensions & Precision Transforms
         "fcd_order_materials",     # 9: Materials & Textures
-        "fcd_order_kinematics",    # 10: Kinematics Setup
-        "fcd_order_physics",       # 11: Physics
+        "fcd_order_physics",       # 10: Physics
+        "fcd_order_kinematics",    # 11: Kinematics Setup
         "fcd_order_transmission",  # 12: Transmission
         "fcd_order_lighting",      # 13: Environment & Lighting
         "fcd_order_camera",        # 14: Camera Studio & Pathing
@@ -713,7 +818,8 @@ def unregister():
             "fcd_export_mesh_format", "fcd_quick_export_format",
             "fcd_smart_material_type", "fcd_material_transparency",
             "fcd_tex_pos", "fcd_tex_rot", "fcd_tex_scale",
-            "fcd_hook_placement_mode", "fcd_camera_preset"
+            "fcd_hook_placement_mode", "fcd_camera_preset",
+            "fcd_show_collisions"
         ]
         # Add order props
         prop_names = [

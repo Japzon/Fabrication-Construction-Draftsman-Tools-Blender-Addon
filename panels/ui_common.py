@@ -240,22 +240,19 @@ class FCD_OT_ResetPanelOrder(bpy.types.Operator):
         scene.fcd_order_ai_factory = 0     # 1: Generate
         scene.fcd_order_assets = 1         # 2: Asset Library
         scene.fcd_order_parts = 2          # 3: Mechanical Presets
-        scene.fcd_order_ai_factory = 0
-        scene.fcd_order_assets = 1
-        scene.fcd_order_parts = 2
-        scene.fcd_order_electronics = 3
-        scene.fcd_order_architectural = 4
-        scene.fcd_order_vehicle = 5
-        scene.fcd_order_procedural = 6
-        scene.fcd_order_dimensions = 7
-        scene.fcd_order_materials = 8
-        scene.fcd_order_kinematics = 9
-        scene.fcd_order_physics = 10
-        scene.fcd_order_transmission = 11
-        scene.fcd_order_lighting = 12
-        scene.fcd_order_camera = 13
-        scene.fcd_order_export = 14
-        scene.fcd_order_preferences = 15
+        scene.fcd_order_electronics = 3    # 4: Electronic Presets
+        scene.fcd_order_architectural = 4  # 5: Architectural Presets
+        scene.fcd_order_vehicle = 5        # 6: Vehicle Presets
+        scene.fcd_order_procedural = 6     # 7: Procedural Toolkit
+        scene.fcd_order_dimensions = 7     # 8: Dimensions & Precision Transforms
+        scene.fcd_order_materials = 8      # 9: Materials & Textures
+        scene.fcd_order_physics = 9        # 10: Physics
+        scene.fcd_order_kinematics = 10    # 11: Kinematics Setup
+        scene.fcd_order_transmission = 11  # 12: Transmission
+        scene.fcd_order_lighting = 12      # 13: Environment & Lighting
+        scene.fcd_order_camera = 13        # 14: Camera Studio & Pathing
+        scene.fcd_order_export = 14        # 15: Export System
+        scene.fcd_order_preferences = 15   # 16: Preferences
         
         # Trigger the update to apply changes immediately
         bpy.ops.fcd.update_panel_order()
