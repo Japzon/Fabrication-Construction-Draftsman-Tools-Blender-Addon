@@ -112,7 +112,7 @@ class FCD_PT_Physics:
                 col.prop(inertial_props, "center_of_mass")
                 
                 tensor_box = ibox.box()
-                tensor_box.label(text="Inertia Tensor Matrix", icon='STRANDS')
+                tensor_box.label(text="Inertia Tensor Matrix (kg·m²)", icon='STRANDS')
                 
                 # 3x3 Matrix Layout
                 main_col = tensor_box.column(align=True)
