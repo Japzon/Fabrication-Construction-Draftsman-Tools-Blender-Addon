@@ -8,19 +8,16 @@
 # original authorship for themselves. Proper attribution is mandatory.
 # --------------------------------------------------------------------------------
 
-
-
-
 bl_info = {
-    "name": "Fabrication & Construction Draftsman Tools",
+    "name": "Layouts & Systems Draftsman Toolkit",
     "author": "Greenlex Systems Services Incorporated",
     "version": (0, 1, 0),
     "blender": (4, 0, 0),
-    "location": "View3D > Sidebar > Draftsman Tools",
+    "location": "View3D > Sidebar > Layouts & Systems Toolkit",
     "description": "A comprehensive toolkit for native, non-destructive URDF creation and rigging for ROS/Gazebo.",
     "category": "Import-Export",
-    "doc_url": "https://github.com/Japzon/Fabrication-Construction-Draftsman-Tools-Blender-Addon.git",
-    "tracker_url": "https://github.com/Japzon/Fabrication-Construction-Draftsman-Tools-Blender-Addon/issues",
+    "doc_url": "https://github.com/Japzon/Layouts-Systems-Draftsman-Toolkit-Addon.git",
+    "tracker_url": "https://github.com/Japzon/Layouts-Systems-Draftsman-Toolkit-Addon/issues",
 }
 
 import bpy

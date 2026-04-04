@@ -1,17 +1,17 @@
-# GNU GENERAL PUBLIC LICENSE (GPL)
-
-This software, "Fabrication & Construction Draftsman Tools," is licensed under the **GNU General Public License (v3 or later)**.
-
-## COPYRIGHT AND AUTHORSHIP
-Copyright (c) 2026 Greenlex Systems Services Incorporated. All rights reserved.
-
-The original architecture, procedural generation algorithms, and UI logic were developed and are maintained by **Greenlex Systems Services Incorporated**. 
-
-## ATTRIBUTION
-Any redistribution or modification of this software must include this license and a clear credit to the original author, **Greenlex Systems Services Incorporated**. You may NOT claim this work as your own or use it in a way that implies you are the original creator of its core logic. 
-
-This work is provided "as is" without warranty of any kind. 
-
----
-**AUTHOR**: Greenlex Systems Services Incorporated
-
+# GNU GENERAL PUBLIC LICENSE (GPL)
+
+This software, "Layouts & Systems Draftsman Toolkit," is licensed under the **GNU General Public License (v3 or later)**.
+
+## COPYRIGHT AND AUTHORSHIP
+Copyright (c) 2026 Greenlex Systems Services Incorporated. All rights reserved.
+
+The original architecture, procedural generation algorithms, and UI logic were developed and are maintained by **Greenlex Systems Services Incorporated**. 
+
+## ATTRIBUTION
+Any redistribution or modification of this software must include this license and a clear credit to the original author, **Greenlex Systems Services Incorporated**. You may NOT claim this work as your own or use it in a way that implies you are the original creator of its core logic. 
+
+This work is provided "as is" without warranty of any kind. 
+
+---
+**AUTHOR**: Greenlex Systems Services Incorporated
+

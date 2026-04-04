@@ -1,7 +1,7 @@
-Fabrication & Construction Draftsman Tools Blender Addon - AI Agent Update Workflow
+Layouts & Systems Draftsman Toolkit - AI Agent Update Workflow
 2: Last Update Verification: April 02, 2026 - 11:15 AM
 
-This workflow is the absolute source of truth for AI agents interacting with this repository: https://github.com/Japzon/Fabrication-Construction-Draftsman-Tools-Blender-Addon.git
+This workflow is the absolute source of truth for AI agents interacting with this repository: https://github.com/Japzon/Layouts-Systems-Draftsman-Toolkit-Addon.git
 Follow these exact, descriptive steps meticulously to robustly update or create new features, preserving the addon's unique framework and preventing major structural or memory errors across future Blender 4.5.6 LTS updates.
 
 Category Index: {
@@ -29,22 +29,22 @@ Category Index: {
 2. Literal Naming Constraints and Structure Enforcement
 * Avoid Generic Variable Reuse: The codebase strictly prohibits generic variable reuse (e.g., using radius for gears, wheels, and springs) to prevent cross-contamination of parametric data. Use uncompromising, literal naming.
 * Mirror GUI Labels in Property Variables (properties.py): Variable names must precisely match the literal string label shown to the user in the frontend GUI. Do not attempt resource efficiency by reusing properties across distinct mechanical categories. You must explicitly use gear_radius, rack_width, wheel_base_radius, or motor_radius depending on the active context.
-* Synchronize GUI Classes in Panel Files: Panel class names must perfectly mirror their string display tag while adhering to Blender's structural naming conventions (PREFIX_PT_name). For example, a panel displaying the text "Mechanical Presets" strictly dictates that the underlying Python class title must be FCD_PT_Mechanical_Presets.
-* Trace GUI Identity in Operators (operators.py): Action classes and bl_idname identicality must logically trace the GUI text using Blender's operator conventions (PREFIX_OT_name). For a button displaying "Generate Robot with AI", the operator class must be FCD_OT_Generate_Robot_With_AI and its identifier must be fcd.generate_robot_with_ai.
+* Synchronize GUI Classes in Panel Files: Panel class names must perfectly mirror their string display tag while adhering to Blender's structural naming conventions (PREFIX_PT_name). For example, a panel displaying the text "Mechanical Presets" strictly dictates that the underlying Python class title must be LSD_PT_Mechanical_Presets.
+* Trace GUI Identity in Operators (operators.py): Action classes and bl_idname identicality must logically trace the GUI text using Blender's operator conventions (PREFIX_OT_name). For a button displaying "Generate Robot with AI", the operator class must be LSD_OT_Generate_Robot_With_AI and its identifier must be lsd.generate_robot_with_ai.
 
 2.1 Standardized Naming Conventions (Mandatory)
-* Operators: PREFIX_OT_Description (e.g., FCD_OT_Apply_Joint_Settings).
-* Panels: PREFIX_PT_Description (e.g., FCD_PT_Kinematics_Setup).
-* PropertyGroups: PREFIX_PG_Description (e.g., FCD_PG_Kinematic_Props).
-* UILists: PREFIX_UL_Description (e.g., FCD_UL_Mat_List).
-* Scene Properties: fcd_lowercased_name (e.g., fcd_active_rig).
-* Bone/Object Properties: fcd_pg_internal_props (Pointer to PG).
+* Operators: PREFIX_OT_Description (e.g., LSD_OT_Apply_Joint_Settings).
+* Panels: PREFIX_PT_Description (e.g., LSD_PT_Kinematics_Setup).
+* PropertyGroups: PREFIX_PG_Description (e.g., LSD_PG_Kinematic_Props).
+* UILists: PREFIX_UL_Description (e.g., LSD_UL_Mat_List).
+* Scene Properties: lsd_lowercased_name (e.g., lsd_active_rig).
+* Bone/Object Properties: lsd_pg_internal_props (Pointer to PG).
 * Member Properties: lowercased_literal_name (e.g., joint_type).
 
 3. Core Architecture Rules (Strict Separation of Concerns)
 Know exactly where Python logic belongs before writing code. You must never mix module responsibilities. Note: BMesh generation logic is strictly forbidden in properties.py to prevent circular import loops.
  * __init__.py: Handles addon metadata, imports all submodules, and manages the central registration/unregistration loops via bpy.utils.register_class.
- * properties.py: Contains only Add-on PropertyGroup classes containing bpy.props declarations (e.g., FCD_PG_Mech_Props and FCD_PG_Inertial_Properties).
+ * properties.py: Contains only Add-on PropertyGroup classes containing bpy.props declarations (e.g., LSD_PG_Mech_Props and LSD_PG_Inertial_Properties).
  * generators.py (New Mandate): Contains all procedural BMesh generation logic, mathematical plotting, and mesh construction functions. This isolates heavy geometry calculations from the data model.
  * operators.py: Holds Button execution classes. These classes parse the properties, call functions from generators.py or core.py, and contain the execute() methods that trigger core actions. You must explicitly pass bpy.context into your wrapper logic safely.
  * core.py: Holds pure utility and backend functions like Gizmo updates, Rigging application, Matrix math handlers, and Material assignments that do not directly generate meshes or draw to the GUI.
@@ -54,7 +54,7 @@ Know exactly where Python logic belongs before writing code. You must never mix 
 4. Feature Creation and Extension Sequence
 When asked to implement or update a function, execute these exact critical steps in order without skipping.
 -Define the Properties (properties.py)
-   * Open properties.py and locate the relevant property group (e.g., fcd_pg_mech_props).
+   * Open properties.py and locate the relevant property group (e.g., lsd_pg_mech_props).
    * Inject rigidly named variables using bpy.props.FloatProperty, IntProperty, etc.
    * Define strict min, max, default, and description parameters.
    * If the variable alters a mesh, bind it to an update function by setting update=update_mesh_wrapper.
@@ -63,7 +63,7 @@ When asked to implement or update a function, execute these exact critical steps
    * Open generators.py.
    * Define the procedural function, ensuring it accepts context and the object being modified.
    * Initialize a clean temporary bmesh using bm = bmesh.new().
-   * Extract the variables defined in Step 4A (e.g., wheel_tread_count = obj.fcd_pg_mech_props.wheel_tread_count).
+   * Extract the variables defined in Step 4A (e.g., wheel_tread_count = obj.lsd_pg_mech_props.wheel_tread_count).
    * Apply vertex changes securely using world-space matrix projections if necessary.
    * Terminate the sequence systematically: calculate normals with bmesh.ops.recalc_face_normals(bm, faces=bm.faces), write to the object with bm.to_mesh(obj.data), update the datablock with obj.data.update(), and free memory with bm.free().
 -Wire the GUI Layout (panels/)
@@ -71,7 +71,7 @@ When asked to implement or update a function, execute these exact critical steps
    * Append the layout.prop() function call directly to a box or row layout element.
    * Pass the exact literal variable name you created. Because the property is explicitly named and described at the properties.py level, omit the text= argument unless a specific override is required.
 -Operator Deployment and Central Registration (operators.py & __init__.py)
-   * If a new action command is required, build it in operators.py starting with the class name FCD_OT_Literal_Action_Name.
+   * If a new action command is required, build it in operators.py starting with the class name LSD_OT_Literal_Action_Name.
    * Open __init__.py. You must explicitly append the new Class to the central classes = (...) tuple at the bottom of the file.
    * Verify that the register() loop contains for cls in classes: bpy.utils.register_class(cls) and unregister() contains bpy.utils.unregister_class(cls) in reverse order to prevent ghost classes on addon reload.
    * Handler Discipline: All app handlers (depsgraph_update, load_post, etc.) must be defined in core.py.
@@ -98,34 +98,19 @@ When testing complex kinematic operations, the Blender System Console must be ut
 6. Code Skeleton Standards (generators.py)
 To enforce memory safety and maintain structural integrity, all procedural mesh generation functions added to generators.py must strictly adhere to this architectural skeleton.
  * Type Hinting: Mandatory for context and obj parameters.
- * Data Extraction: Must pull directly from the properly prefixed PropertyGroup (fcd_pg_mech_props).
+ * Data Extraction: Must pull directly from the properly prefixed PropertyGroup (lsd_pg_mech_props).
  * Memory Cycle: bmesh.new() must always be paired with bm.free() at the end of the function.
 
 7. Naming Transition & Extension Compliance
-* Previous Name: Robot System Simulation Generator AI / fabrication_construction_draftsman_tools_automated
-* Current Name: Fabrication & Construction Draftsman Tools
-* Repository Folder: Fabrication-Construction-Draftsman-Tools-Blender-Addon
-* Extension Module ID: fabrication_construction_draftsman_tools (Lowercased)
-* Mandatory Folder Name (in AppData/Extensions): fabrication_construction_draftsman_tools
+* Previous Name: Layouts, Assembly Lines & Draftsman Toolkit
+* Current Name: Layouts & Systems Draftsman Toolkit
+* Repository Folder: Layouts-Systems-Draftsman-Toolkit-Addon
+* Extension Module ID: layouts_systems_draftsman_toolkit (Lowercased)
+* Mandatory Folder Name (in AppData/Extensions): layouts_systems_draftsman_toolkit
 * All internal references must be updated to the new module name to prevent "Inconsistent name mismatch" errors during registration.
 
 8. Current Session Tasks Log Here
-* [NEW PROTOCOL] Manual Push Only: Automatic git pushes are now disabled to prevent accidental repository corruption.
-* [VERIFIED] Registration Stability Fix: Restored the accidentally deleted `update_cursor_local_wrapper` function in properties.py. This resolves the `NameError` that was blocking the entire add-on registration and causing the subsequent `AttributeError: fcd_active_rig`.
-* [VERIFIED] Automated Physics Calculation: Added 'density' and 'volume_m3' properties. Refactored 'Calculate Center of Mass' to automatically derive mass (volume * density), which now correctly feeds the 'Calculate Inertia' operator for one-click physics setup.
-* [VERIFIED] Collision Visibility Persistence: Fixed the generation operator to respect the 'Show All Collision Meshes' toggle during mesh creation. This ensures collision meshes immediately follow the global visibility state without requiring a toggle cycle.
-* [VERIFIED] Physics Panel & Inertial Refinement: Standardized the 'Physics' panel to support cross-selection between source parts and 'COLL_' meshes. Poly Reduction now live-updates regardless of which side is selected. Inertial operators (COM/Inertia) have been refactored for Object Mode support, prioritizing the simplified collision geometry for accurate mesh-based mass and volume calculations.
-* [VERIFIED] Global Physics Controls: Added scene-level toggles for 'Show All' and 'Edit All' collisions. Unified inertial calculations into a single 'Auto-Calculate Physics' (1-click) execution button to streamline the drafting workflow while maintaining visibility of deep property fields (Mass, COM, Tensor).
-* [VERIFIED] Property update Callback Fix: Resolved the `ValueError: the return value must be None` by replacing the direct operator call lambda with a proper `update_collision_decimate` function in properties.py. This ensures strict compliance with Blender's PropertyGroup update protocol.
-* [VERIFIED] Physics Panel Relocation: Relocated 'Mass (g/cm³)' to the primary input position (formerly 'Custom Density Input') and removed the redundant 'Mass (kg)' field to streamline the physics calculation workflow. Renamed 'density_gcm3' to 'mass_gcm3' for 1:1 property parity.
-* [VERIFIED] Physics Panel Material Library: Implemented a comprehensive solid element library (Metals, Nonmetals, Semimetals) with alphabetical filtering. Integrated solid-state density data for all elements, including frozen densities for liquid/gas elements, accessible via dynamic dropdown presets. Renamed physics input to 'Custom Mass (g/cm³)' with auto-derivation from selected element presets.
-* [VERIFIED] Physics Property Organization: Restored the final 'Mass (kg)' property to the visible properties section of the Physics panel. This allows for manual mass overrides or inspection of absolute mass (calculated from elemental density presets) as a separate data point from the 'Custom Mass (g/cm³)' drafting input.
-* [VERIFIED] Physics Panel Refinement: 1. Enabled 'Poly Reduction' to work on all selected objects simultaneously via a guarded property-sync callback. 2. Repositioned the 'Show All Collision Meshes' toggle to the top of the panel to ensure persistent accessibility regardless of part selection. 3. Reconfigured the Inertia Tensor UI as a symmetric 3x3 matrix as per engineering standards.
-* [VERIFIED] Collision Management Lifecycle: 1. Updated 'Sync/Generate Collision' to replace outdated collision meshes with fresh, evaluated snapshots (including GN and Boolean results). 2. Implemented 'Purge Collision for Selected' operator to explicitly clear 'COLL_' objects and their associated data. 3. Restored the visibility and cleanup utilities to their primary operational position below 'Poly Reduction'. 4. Resolved a Blender 4.x `RuntimeError: Cannot create object with an evaluated data-block` by migrating to the `new_from_object` data duplication protocol.
-* [VERIFIED] Collision Visibility & Selection: 1. Decoupled global collision visibility and purge controls from object selection, ensuring the UI remains persistent when meshes are hidden. 2. Enabled 'Show in Front' for all generated collision shells, allowing for immediate depth-aware selection even when buried within a high-poly target mesh.
-* [VERIFIED] Physics Panel UX & Stability: 1. Implemented auto-selection for material categories—changing category now resets the element dropdown to the first alphabetical item. 2. Added 'Collision Thickness' property (Solidify modifier) to the drafting workflow for creating offset collision shells. 3. Fixed a `ReferenceError` in the 'Purge Collision' operator by converting selection to a static source set before destruction. 4. Configured the 'Solidify' shell parameters (Offset: 1.0, Fill Rim, Only Rim) as the default preset to create accurate external collision shells.
-* [VERIFIED] High-Fidelity Physics Engine: Integrated a 'Full Resolution' calculation protocol into the 'Auto-Calculate Physics' features. The engine now temporarily bypasses 'Poly Reduction' (Decimation) and 'Collision Thickness' (Solidify) modifiers during execution, ensuring that volume, mass, and inertial tensors are derived from the raw manifold geometry without altering the user's drafting/visual settings.
-* [VERIFIED] Critical Stability Repair: Resolved an `IndentationError` and accidental code corruption in `operators.py` that occurred during the 'High-Fidelity' logic integration. The addon now installs and enables correctly in Blender 4.x.
-* [VERIFIED] Robust Physics Operator Access: Relaxed the `poll` logic for the 'Auto-Calculate Physics' feature. The system now validates availability based on the presence of the required physics property groups rather than an internal boolean flag, ensuring the tool is available for all designated drafting parts and collision shells.
+* [VERIFIED] Secondary Rename: Renamed addon from 'Layouts, Assembly Lines & Draftsman Toolkit' to 'Layouts & Systems Draftsman Toolkit'. Updated all `LAD_` prefixes to `LSD_`, `lad_` to `lsd_`, and updated metadata across all files.
+* [VERIFIED] Major Rename: Renamed addon from 'Fabrication & Construction Draftsman Tools' to 'Layouts, Assembly Lines & Draftsman Toolkit'. Updated all `FCD_` prefixes to `LAD_`, `fcd_` to `lad_`, and updated metadata across all files, including operator identifiers via `lad.`.
 * [VERIFIED] Engineering Unit Labeling: Explicitly labeled the 'Inertia Tensor Matrix' in the UI as using **kg·m²** units, aligning the drafting interface with standard engineering practices.
 * [VERIFIED] High-Precision Physics Verification: Refactored 'Auto-Calculate Physics' to ignore drafting-only modifiers (Poly Reduction and Thickness) during computation. This ensures Mass, COM, and Inertia data are derived from the highest resolution geometry without requiring the user to manually reset their viewport simplification settings.
