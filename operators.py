@@ -4422,7 +4422,7 @@ class LSD_OT_ReadJointSettings(bpy.types.Operator):
 
 
 
-        tool_props.gizmo_radius = active_props.gizmo_radius
+        tool_props.visual_gizmo_scale = active_props.visual_gizmo_scale
 
 
 
@@ -4479,6 +4479,15 @@ class LSD_OT_ApplyJointSettings(bpy.types.Operator):
 
 
     bl_options = {'REGISTER', 'UNDO'}
+    
+    # Flags to determine which properties to apply (enables retaining individual settings)
+    apply_type: bpy.props.BoolProperty(name="Apply Type", default=True)
+    apply_axis: bpy.props.BoolProperty(name="Apply Axis", default=True)
+    apply_radius: bpy.props.BoolProperty(name="Apply Radius", default=True)
+    apply_viz_scale: bpy.props.BoolProperty(name="Apply Visual Scale", default=True)
+    apply_limits: bpy.props.BoolProperty(name="Apply Limits", default=True)
+    apply_ik: bpy.props.BoolProperty(name="Apply IK", default=True)
+
 
 
 
@@ -4822,35 +4831,20 @@ class LSD_OT_ApplyJointSettings(bpy.types.Operator):
 
 
 
-                # Transfer all visual/mechanical settings from the tool
-
-
-
-                props.joint_type = tool_props.joint_type
-
-
-
-                props.axis_enum = tool_props.axis_enum
-
-
-
-                props.joint_radius = tool_props.joint_radius
-
-
-
-                props.gizmo_radius = tool_props.gizmo_radius
-
-
-
-                props.lower_limit = tool_props.lower_limit
-
-
-
-                props.upper_limit = tool_props.upper_limit
-
-
-
-                props.ik_chain_length = tool_props.ik_chain_length
+                # Transfer settings only if flags are enabled (enables multi-bone individual retention)
+                if self.apply_type:
+                    props.joint_type = tool_props.joint_type
+                if self.apply_axis:
+                    props.axis_enum = tool_props.axis_enum
+                if self.apply_radius:
+                    props.joint_radius = tool_props.joint_radius
+                if self.apply_viz_scale:
+                    props.visual_gizmo_scale = tool_props.visual_gizmo_scale
+                if self.apply_limits:
+                    props.lower_limit = tool_props.lower_limit
+                    props.upper_limit = tool_props.upper_limit
+                if self.apply_ik:
+                    props.ik_chain_length = tool_props.ik_chain_length
 
 
 
@@ -5170,7 +5164,7 @@ class LSD_OT_ApplyBoneConstraints(bpy.types.Operator):
 
 
 
-                target_props.gizmo_radius = source_props.gizmo_radius
+                target_props.visual_gizmo_scale = source_props.visual_gizmo_scale
 
 
 
@@ -17531,7 +17525,7 @@ class LSD_OT_ClearConfig(bpy.types.Operator):
 
 
 
-            props.gizmo_radius = 0.1
+            props.visual_gizmo_scale = 1.0
 
 
 

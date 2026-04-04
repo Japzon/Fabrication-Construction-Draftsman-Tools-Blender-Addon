@@ -442,9 +442,8 @@ class LSD_PT_Kinematics_Setup:
                     row = size_box.row(align=True)
 
 
-                                        if tool_props.joint_type != 'none':
-                        row.prop(tool_props, "joint_radius")
-                        row.prop(tool_props, "gizmo_radius")
+                    row.prop(tool_props, "joint_radius")
+                    row.prop(tool_props, "visual_gizmo_scale")
 
 
 

@@ -89,9 +89,7 @@ from .config import *
 #   Update Callbacks
 
 def update_joint_radius(self, context):
-    """Syncs gizmo radius to joint radius automatically per Project Task 2.1."""
-    # Avoid recursion if needed, but simple assignment is usually safe in Blender props
-    self.gizmo_radius = self.joint_radius
+    """Refreshes the joint tool visual state when radius changes."""
     update_joint_tool_live(self, context)
 
 
@@ -169,21 +167,36 @@ def update_radius_prop(self, context: bpy.types.Context):
 
 
 
+# --- Joint Editor Tool Dispatchers (Support Targeted Property Application) ---
 def dispatch_apply_joint_settings():
-
-
-
+    """Fallback: Apply all tool settings to selection."""
     bpy.ops.lsd.apply_joint_settings()
-
-
-
     return None
 
+def dispatch_apply_joint_type():
+    """Targeted: Apply only type and axis settings."""
+    bpy.ops.lsd.apply_joint_settings(apply_type=True, apply_axis=True, apply_radius=False, apply_viz_scale=False, apply_limits=False, apply_ik=False)
+    return None
 
+def dispatch_apply_joint_radius():
+    """Targeted: Apply only the joint radius setting."""
+    bpy.ops.lsd.apply_joint_settings(apply_type=False, apply_axis=False, apply_radius=True, apply_viz_scale=False, apply_limits=False, apply_ik=False)
+    return None
 
+def dispatch_apply_joint_viz_scale():
+    """Targeted: Apply only the visual gizmo scale setting."""
+    bpy.ops.lsd.apply_joint_settings(apply_type=False, apply_axis=False, apply_radius=False, apply_viz_scale=True, apply_limits=False, apply_ik=False)
+    return None
 
+def dispatch_apply_joint_limits():
+    """Targeted: Apply only the motion limits (lower/upper)."""
+    bpy.ops.lsd.apply_joint_settings(apply_type=False, apply_axis=False, apply_radius=False, apply_viz_scale=False, apply_limits=True, apply_ik=False)
+    return None
 
-
+def dispatch_apply_joint_ik():
+    """Targeted: Apply only the IK chain length setting."""
+    bpy.ops.lsd.apply_joint_settings(apply_type=False, apply_axis=False, apply_radius=False, apply_viz_scale=False, apply_limits=False, apply_ik=True)
+    return None
 
 def dispatch_apply_bone_constraints():
 
@@ -201,68 +214,37 @@ def dispatch_apply_bone_constraints():
 
 
 
-def update_joint_tool_live(self, context):
-
-
-
-    """
-
-
-
-    Timer-based dispatcher for the joint tool.
-
-
-
-    Ensures safe execution of operators during property update callbacks.
-
-
-
-    AI Editor Note: Using named functions for timers prevents redundant 
-
-
-
-    registrations during rapid property changes (like slider dragging).
-
-
-
-    """
-
-
-
+def update_joint_type_live(self, context):
+    """Timer-based dispatcher for joint type changes."""
     from . import core
+    if isinstance(self.id_data, bpy.types.Scene) and not core._joint_editor_update_guard:
+        bpy.app.timers.register(dispatch_apply_joint_type, first_interval=0.01)
 
+def update_joint_radius_live(self, context):
+    """Timer-based dispatcher for joint radius changes."""
+    from . import core
+    if isinstance(self.id_data, bpy.types.Scene) and not core._joint_editor_update_guard:
+        bpy.app.timers.register(dispatch_apply_joint_radius, first_interval=0.01)
 
+def update_joint_viz_scale_live(self, context):
+    """Timer-based dispatcher for visual gizmo scale changes."""
+    from . import core
+    if isinstance(self.id_data, bpy.types.Scene) and not core._joint_editor_update_guard:
+        bpy.app.timers.register(dispatch_apply_joint_viz_scale, first_interval=0.01)
 
-    if isinstance(self.id_data, bpy.types.Scene):
+def update_joint_limits_live(self, context):
+    """Timer-based dispatcher for limit changes."""
+    from . import core
+    if isinstance(self.id_data, bpy.types.Scene) and not core._joint_editor_update_guard:
+        bpy.app.timers.register(dispatch_apply_joint_limits, first_interval=0.01)
 
+def update_joint_ik_live(self, context):
+    """Timer-based dispatcher for IK changes."""
+    from . import core
+    if isinstance(self.id_data, bpy.types.Scene) and not core._joint_editor_update_guard:
+        bpy.app.timers.register(dispatch_apply_joint_ik, first_interval=0.01)
 
-
-        if not core._joint_editor_update_guard:
-
-
-
-            # Using a named function for the timer ensures we don't stack lambdas
-
-
-
-            bpy.app.timers.register(dispatch_apply_joint_settings, first_interval=0.01)
-
-
-
-    else:
-
-
-
-        # Individual bone update
-
-
-
-        if not core._prop_update_guard:
-
-
-
-            if hasattr(self.id_data, "pose") and context.mode == 'POSE':
-
+def update_joint_tool_live(self, context):
 
 
                 # Transitioning to a timer avoids "readonly mode" errors.
@@ -2137,7 +2119,7 @@ class LSD_PG_Kinematic_Props(bpy.types.PropertyGroup):
 
 
 
-        update=update_joint_tool_live
+        update=update_joint_type_live
 
 
 
@@ -2157,7 +2139,7 @@ class LSD_PG_Kinematic_Props(bpy.types.PropertyGroup):
 
 
 
-        update=update_joint_tool_live
+        update=update_joint_type_live
 
 
 
@@ -2165,23 +2147,23 @@ class LSD_PG_Kinematic_Props(bpy.types.PropertyGroup):
 
 
 
-    joint_radius: bpy.props.FloatProperty(name="Joint Radius", default=0.05, min=0.0, unit='LENGTH', update=update_joint_radius)
+    joint_radius: bpy.props.FloatProperty(name="Joint Radius", default=0.05, min=0.0, unit='LENGTH', update=update_joint_radius_live)
 
 
 
-    gizmo_radius: bpy.props.FloatProperty(name="Gizmo Radius", default=0.1, min=0.0, unit='LENGTH', update=update_joint_tool_live)
+    visual_gizmo_scale: bpy.props.FloatProperty(name="Visual Gizmo Scale", default=1.0, min=0.0, update=update_joint_viz_scale_live)
 
 
 
-    lower_limit: bpy.props.FloatProperty(name="Lower", default=-90.0, update=update_joint_tool_live)
+    lower_limit: bpy.props.FloatProperty(name="Lower", default=-90.0, update=update_joint_limits_live)
 
 
 
-    upper_limit: bpy.props.FloatProperty(name="Upper", default=90.0, update=update_joint_tool_live)
+    upper_limit: bpy.props.FloatProperty(name="Upper", default=90.0, update=update_joint_limits_live)
 
 
 
-    ik_chain_length: bpy.props.IntProperty(name="IK Chain Length", default=0, min=0, max=255, update=update_joint_tool_live)
+    ik_chain_length: bpy.props.IntProperty(name="IK Chain Length", default=0, min=0, max=255, update=update_joint_ik_live)
 
 
 

@@ -5435,11 +5435,11 @@ def update_single_bone_gizmo(bone: bpy.types.PoseBone, show_gizmos: bool, style:
         # 2. If meshes exist, derive scale from their bounds but respect the Joint Radius as a minimum.
         if has_meshes:
             # max(dims) is already in BU.
-            r_bu = max(max(dims), props.joint_radius * s)
+            r_bu = props.joint_radius * s
         
         # 3. Apply the visual 'Gizmo Radius' multiplier.
         # This allows for subjective visual tweaks on top of physical data.
-        final_scale = r_bu * props.gizmo_radius
+        final_scale = r_bu * props.visual_gizmo_scale
         
         # Ensure the scale is never zero to prevent invisible gizmos.
         if final_scale < config.MIN_GIZMO_SCALE:

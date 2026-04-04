@@ -33,7 +33,7 @@ GEAR_BEVEL_TAPER_FACTOR: float = math.cos(math.radians(20))
 GIZMO_ROTATION_OFFSET: float = -90.0
 WELD_THRESHOLD: float = 0.0001
 MIN_BONE_LENGTH: float = 0.01
-MIN_GIZMO_SCALE: float = 0.001
+MIN_GIZMO_SCALE: float = 0.0001
 DEFAULT_IK_CHAIN_LENGTH: int = 255
 
 # --- UI Panel Management (LSD Scoped) ---
