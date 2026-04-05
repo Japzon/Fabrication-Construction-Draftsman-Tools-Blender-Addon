@@ -137,23 +137,28 @@ class LSD_PT_Dimensions_And_Precision_Transforms:
 
             pref_col = dim_toolkit_box.column(align=True)
 
-            pref_col.label(text="Default Preferences (New Assemblies):", icon='PREFERENCES')
+            # Row 0: Header + Auto Size Toggle
+            row_header = pref_col.row(align=True)
+            row_header.label(text="Default Preferences (New Assemblies):", icon='PREFERENCES')
+            row_header.operator("lsd.dimension_auto_calculate_global", text="Auto Calculate", icon='AUTO')
 
-            row_pref = pref_col.row(align=True)
+            # Row 1: Arrow + Txt Size
+            row_size = pref_col.row(align=True)
+            row_size.prop(scene, "lsd_dim_arrow_scale", text="Arrow")
+            row_size.prop(scene, "lsd_dim_text_scale", text="Txt Size")
 
-            row_pref.prop(scene, "lsd_dim_arrow_scale", text="Arrow")
-            row_pref.prop(scene, "lsd_dim_text_scale", text="Txt Size")
-            row_pref.prop(scene, "lsd_dim_text_offset", text="Txt Off")
+            # Row 2: Thickness + Txt Off
+            row_thick = pref_col.row(align=True)
+            row_thick.prop(scene, "lsd_dim_line_thickness", text="Thickness")
+            row_thick.prop(scene, "lsd_dim_text_offset", text="Txt Off")
 
-            row_pref2 = pref_col.row(align=True)
-
-            row_pref2.prop(scene, "lsd_dim_line_thickness", text="Thickness")
-
-            row_pref2.prop(scene, "lsd_dim_auto_scale_on_spawn", text="Auto Size")
-
+            # Row 3: Default Offset
             pref_col.prop(scene, "lsd_dim_offset", text="Default Offset")
 
-            pref_col.prop(scene, "lsd_dim_axis", text="Measurement Mode")
+            # Row 4: Measurement Mode
+            row_meas = pref_col.row(align=True)
+            row_meas.label(text="Measurement ...")
+            row_meas.prop(scene, "lsd_dim_axis", text="")
 
             
 

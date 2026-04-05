@@ -891,7 +891,6 @@ def register():
     bpy.types.Scene.lsd_dim_text_offset = bpy.props.FloatProperty(name="Text Offset", default=0.05, min=0.0, unit='LENGTH')
     bpy.types.Scene.lsd_dim_line_thickness = bpy.props.FloatProperty(name="Line Thickness", default=0.002, min=0.0, unit='LENGTH')
     bpy.types.Scene.lsd_dim_offset = bpy.props.FloatProperty(name="Offset", default=0.1, min=0.0, unit='LENGTH')
-    bpy.types.Scene.lsd_dim_auto_scale_on_spawn = bpy.props.BoolProperty(name="Auto Scale Components", default=True)
     bpy.types.Scene.lsd_dim_axis = bpy.props.EnumProperty(
         name="Measurement Axis", 
         items=[('X', "X", ""), ('Y', "Y", ""), ('Z', "Z", ""), ('ALL', "All Axes", "")], 

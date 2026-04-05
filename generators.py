@@ -683,16 +683,6 @@ def generate_smart_dimension_parametric(context, p1, p2, name="Dimension", paren
     v_thick = scene.lsd_dim_line_thickness
     v_offset = scene.lsd_dim_offset
     v_text_offset = scene.lsd_dim_text_offset
-    # Auto-Scaling logic on spawn
-    if scene.lsd_dim_auto_scale_on_spawn:
-        v_arrow = initial_length * getattr(scene, 'lsd_dim_ratio_arrow', 0.2)
-        v_text = initial_length * getattr(scene, 'lsd_dim_ratio_text', 0.1)
-        v_thick = initial_length * getattr(scene, 'lsd_dim_ratio_thick', 0.004)
-        v_text_offset = initial_length * getattr(scene, 'lsd_dim_ratio_text_off', 0.06)
-        v_offset = initial_length * getattr(scene, 'lsd_dim_ratio_offset', 0.15)
-        # Guards
-        if v_arrow < 0.001: v_arrow = 0.001
-        if v_text < 0.001: v_text = 0.001
 
     dim_props = txt_obj.lsd_pg_dim_props
     dim_props.length = initial_length

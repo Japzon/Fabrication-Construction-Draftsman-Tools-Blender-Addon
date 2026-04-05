@@ -9162,6 +9162,50 @@ class LSD_OT_Register_Default_Proportions(bpy.types.Operator):
         self.report({'INFO'}, "Registered custom drafting proportions as defaults")
         return {'FINISHED'}
 
+class LSD_OT_Dimension_Auto_Calculate_Global(bpy.types.Operator):
+    """Calculates optimal drafting sizes based on selection distance (for new assemblies)."""
+    bl_idname = "lsd.dimension_auto_calculate_global"
+    bl_label = "Auto Calculate"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        scene = context.scene
+        import mathutils
+        dist = 0.0
+        
+        # 1. Harvesting reference points
+        points = []
+        if context.mode == 'EDIT_MESH':
+            import bmesh
+            # We must ensure we're looking at the right mesh data
+            obj = context.active_object
+            if obj.type == 'MESH':
+                bm = bmesh.from_edit_mesh(obj.data)
+                points = [obj.matrix_world @ v.co.copy() for v in bm.verts if v.select]
+        else:
+            points = [o.matrix_world.translation.copy() for o in context.selected_objects]
+
+        if len(points) >= 2:
+            dist = (points[0] - points[1]).length
+        elif len(points) == 1:
+            dist = (points[0] - scene.cursor.location).length
+        else:
+            self.report({'WARNING'}, "Select at least 2 points to calculate distance.")
+            return {'CANCELLED'}
+
+        if dist < 0.0001: dist = 1.0 # Absolute Minimal Fallback
+
+        # 2. Update Global Scale Priorities (Scene Settings)
+        # These use the established drafting ratios (set by Register Custom Proportions)
+        scene.lsd_dim_arrow_scale = dist * scene.lsd_dim_ratio_arrow
+        scene.lsd_dim_text_scale = dist * scene.lsd_dim_ratio_text
+        scene.lsd_dim_line_thickness = dist * scene.lsd_dim_ratio_thick
+        scene.lsd_dim_text_offset = dist * scene.lsd_dim_ratio_text_off
+        scene.lsd_dim_offset = dist * scene.lsd_dim_ratio_offset
+
+        self.report({'INFO'}, f"Pre-calculated preferences for distance: {dist:.3f}")
+        return {'FINISHED'}
+
 def register():
 
     CLASSES = [
@@ -9176,7 +9220,7 @@ def register():
         LSD_OT_ExportGazeboWorld, LSD_OT_LinkChainDriver, LSD_OT_AddBoolean, LSD_OT_AddParametricAnchor, 
         LSD_OT_AddMarker, LSD_OT_ToggleHookPlacement, LSD_OT_CleanupAnchor, LSD_OT_BakeAnchor, 
         LSD_OT_AddTextDescription, LSD_OT_Remove_Dimension, LSD_OT_Add_Dimension, LSD_OT_AddModifier, 
-        LSD_OT_Dimension_AutoScale, LSD_OT_Register_Default_Proportions,
+        LSD_OT_Dimension_AutoScale, LSD_OT_Register_Default_Proportions, LSD_OT_Dimension_Auto_Calculate_Global,
         LSD_OT_AddSimplify, LSD_OT_SetupLinearArray, LSD_OT_SetupRadialArray, LSD_OT_CreateCurveForPath, 
         LSD_OT_SetupCurveArray, LSD_OT_SmartSmooth, LSD_OT_CreatePart, LSD_OT_ChainAddWrapObject, 
         LSD_OT_CreateElectronicPart, LSD_OT_ChainAddPickedWrapObject, LSD_OT_ChainRemoveWrapObject, 
