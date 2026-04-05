@@ -115,6 +115,9 @@ class LSD_PT_Dimensions_And_Precision_Transforms:
 
             row_ops.operator("lsd.cleanup_anchor", text="Remove Selected", icon='TRASH')
 
+            # Global Hide/Show All Anchors
+            anchor_box.prop(scene, "lsd_hide_all_anchors", text="Hide All Anchors", toggle=True, icon='HIDE_OFF' if not scene.lsd_hide_all_anchors else 'HIDE_ON')
+            
             # Contextual info for meshes with existing hooks
 
             if context.active_object and context.active_object.type == 'MESH':
@@ -313,6 +316,11 @@ class LSD_PT_Dimensions_And_Precision_Transforms:
                 master_box.separator()
                 # AI Editor Note: 'Bake' now triggers tool property consolidation
                 master_box.operator("lsd.bake_dimensions_master", text="Group for Master Control", icon='GEOMETRY_NODES')
+
+            # Global Hide/Show All Dimensions (Moved outside the box for direct accessibility)
+            col.separator()
+            col.prop(scene, "lsd_hide_all_dimensions", text="Hide All Dimensions", toggle=True, icon='HIDE_OFF' if not scene.lsd_hide_all_dimensions else 'HIDE_ON')
+            col.separator()
 
 
             # --- Accurate Scale (New) ---

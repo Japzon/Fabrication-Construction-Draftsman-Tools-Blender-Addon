@@ -3468,6 +3468,7 @@ class LSD_OT_AddParametricAnchor(bpy.types.Operator):
                 empty.empty_display_type = 'SINGLE_ARROW'
                 empty.empty_display_size = final_display_size
                 empty["lsd_anchor"] = True
+                empty.show_in_front = True
                 context.scene.collection.objects.link(empty)
 
                 # 4. Bind ALL
@@ -3508,6 +3509,7 @@ class LSD_OT_AddParametricAnchor(bpy.types.Operator):
                     empty.empty_display_type = 'SINGLE_ARROW'
                     empty.empty_display_size = fs
                     empty["lsd_anchor"] = True
+                    empty.show_in_front = True
                     context.scene.collection.objects.link(empty)
 
                     # 4. Bind
@@ -3707,6 +3709,7 @@ class LSD_OT_AddMarker(bpy.types.Operator):
                         empty.location = (0, 0, 0)
 
                 empty["lsd_anchor"] = True
+                empty.show_in_front = True
                 created_empties.append(empty)
                 created_count = 1
                 
@@ -3746,6 +3749,7 @@ class LSD_OT_AddMarker(bpy.types.Operator):
 
 
                     empty["lsd_anchor"] = True
+                    empty.show_in_front = True
                     # --- Always parent individual markers ---
                     empty.parent = target
                     empty.matrix_parent_inverse = target.matrix_world.inverted()

@@ -836,7 +836,7 @@ def generate_smart_dimension_parametric(context, p1, p2, name="Dimension", paren
 
     # 6. Visibility Enhancements (Drafting Style)
     # AI Editor Note: Set 'In Front' to ensure visibility even inside targets
-    for o in [root, arrow_a, arrow_b, dim_line, txt_obj, hook, ext_a, ext_b]:
+    for o in [root, aa_master, ab_master, arrow_a, arrow_b, dim_line, txt_obj, hook, ext_a, ext_b]:
          if o:
               o.show_in_front = True
               # Make them stand out in Solid mode

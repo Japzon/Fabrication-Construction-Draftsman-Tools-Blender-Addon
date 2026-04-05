@@ -1059,7 +1059,47 @@ def register():
 
     
 
-    # 1.1.2 Anchor Globals (New Feature Request)
+    def update_lsd_visibility(self, context):
+        """Global visibility toggle for dimensions and anchors (Hooks/Markers)."""
+        hide_anchors = context.scene.lsd_hide_all_anchors
+        hide_dims = context.scene.lsd_hide_all_dimensions
+        
+        for obj in bpy.data.objects:
+            anc_type = obj.get("lsd_is_dimension_anchor")
+            is_dim = (
+                obj.get("lsd_is_dimension") or 
+                obj.get("lsd_is_dimension_root") or 
+                obj.get("lsd_is_dimension_line") or 
+                obj.get("lsd_is_extension_line") or
+                anc_type == "VISUAL"
+            )
+            is_internal_anchor = anc_type in ["MASTER", "HOOK"]
+            is_manual_pnt = obj.get("lsd_anchor") or obj.get("lsd_is_marker")
+            
+            # 1. Native Hide for Anchors (Masters and Manual Hooks)
+            if is_manual_pnt or (is_internal_anchor and hide_anchors):
+                 obj.hide_viewport = hide_anchors
+                 obj.hide_set(hide_anchors)
+            
+            # 2. Native Hide for Dimensions (Whole assembly, including internal anchors)
+            if is_dim or is_internal_anchor:
+                # To prevent broken lines leading to hidden roots, 
+                # INTERNAL anchors must hide whenever the dimension hides.
+                h = hide_dims if is_dim else (hide_dims or (is_internal_anchor and hide_anchors))
+                obj.hide_viewport = h
+                obj.hide_set(h)
+
+    bpy.types.Scene.lsd_hide_all_anchors = bpy.props.BoolProperty(
+        name="Hide All Anchors", 
+        default=False,
+        update=update_lsd_visibility
+    )
+    bpy.types.Scene.lsd_hide_all_dimensions = bpy.props.BoolProperty(
+        name="Hide All Dimensions", 
+        default=False,
+        update=update_lsd_visibility
+    )
+
     bpy.types.Scene.lsd_anchor_placement_source = bpy.props.EnumProperty(
         name="Placement Mode",
         items=[('SELECTED', "Selected Origin/Center", ""), ('CURSOR', "3D Cursor", "")],
