@@ -1426,46 +1426,40 @@ def lsd_dimension_sync_handler(scene: bpy.types.Scene, depsgraph: bpy.types.Deps
 
         # Calculate local target coordinates relative to assembly root
         local_target = root.matrix_world.inverted() @ target_mesh_hook.matrix_world.translation
-
         
+        # 1. LENGTH SYNC (X/Y/Z primary drafting axis)
+        # AI Editor Note: Using the guard to prevent fighting with manual sliders
+        if _dim_update_guard: continue
 
+        last_l = obj.get("_lsd_last_built_length", -1.0)
+        curr_l = dim_props.length
+        
         if not dim_props.is_manual:
-
              # DYNAMIC MODE: Object/Mesh Hook drives the property
-             # We use the Z-component of the target in root-local space as the true drafted length.
              dist = abs(local_target.z)
-
-             
-
-             if abs(dim_props.length - dist) > 0.0001:
-
-                  # AI Editor Note: Must temporarily disable guard to allow this specific length update
+             if abs(curr_l - dist) > 0.0001:
                   _dim_update_guard = True
                   try:
-
                       dim_props["length"] = dist
                       update_dimension_length(obj)
-
+                      obj["_lsd_last_built_length"] = dist
+                      # Tags to ensure anchors/points refresh coordinate matrices
+                      for child in root.children:
+                           if child.get("lsd_is_dimension_anchor"): child.update_tag()
                   finally:
-
                       _dim_update_guard = False
+        else:
+             # MANUAL/DRIVEN MODE: Check if an external driver changed the value
+             if abs(last_l - curr_l) > 0.0001:
+                  update_dimension_length(obj)
+                  obj["_lsd_last_built_length"] = curr_l
 
-        
-
-        # ALWAYS sync transverse coordinates to prevent target snapping during alignment
+        # 2. TRANSVERSE SYNC (Alignment stability)
         if abs(dim_props.target_x - local_target.x) > 0.0001 or abs(dim_props.target_y - local_target.y) > 0.0001:
-
              dim_props["target_x"] = local_target.x
              dim_props["target_y"] = local_target.y
-             # We trigger a mesh refresh only if not manual (manual slider handles its own mesh update)
              if not dim_props.is_manual:
-
                   update_dimension_length(obj)
-
-        else:
-
-              # MANUAL MODE: Only update if explicitly requested via slider
-              pass
 
 def update_dimension_length(obj):
 
@@ -1538,8 +1532,12 @@ def update_dimension_length(obj):
 
     
 
-    # 3. Global settings passthrough
+    # 3. Global settings passthrough and final sync
     update_arrow_settings(root)
+    
+    # AI Editor Note: Added explicit tags to fix the 'offset until undo' bug
+    host.update_tag()
+    root.update_tag()
 
 def update_arrow_settings(obj):
 

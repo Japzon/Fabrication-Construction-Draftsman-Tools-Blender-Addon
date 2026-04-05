@@ -213,28 +213,63 @@ def update_collision_visibility(self, context):
     return None
 
 def update_dimension_length_timer(self, context):
-
     """Dispatches length update via timer with a single-queue guard."""
     from . import core
     if getattr(core, "_dim_timer_queued", False): return
     core._dim_timer_queued = True
 
-    
-
     if hasattr(self, "is_manual"):
-
         self.is_manual = True
 
-        
-
     def dispatch():
-
         core._dim_timer_queued = False
         obj = self.id_data
         if obj: core.update_dimension_length(obj)
         return None
 
     bpy.app.timers.register(dispatch, first_interval=0.03)
+
+def update_dimension_driver_target(self, context):
+    """Sets up a driver for the dimension to follow the target dimension's length."""
+    host = self.obj
+    target = self.driver_target
+    
+    if not host or not hasattr(host, "lsd_pg_dim_props"):
+        return
+        
+    target_path = 'lsd_pg_dim_props.length'
+    host.driver_remove(target_path)
+
+    if target:
+        # 1. Self-Link Guard (Prevents Dependency Cycles)
+        if host == target or (host.parent and host.parent == target):
+            self.driver_target = None
+            return
+            
+        # Find the actual label object if target is a root
+        target_obj = target
+        if target.get("lsd_is_dimension_root"):
+            for child in target.children:
+                if child.get("lsd_is_dimension"):
+                    target_obj = child
+                    break
+        
+        # 2. Immediate Sync (Copy length once)
+        if hasattr(target_obj, "lsd_pg_dim_props"):
+             host.lsd_pg_dim_props.length = target_obj.lsd_pg_dim_props.length
+        
+        # 3. Establish Persistent Driver
+        drv = host.driver_add(target_path).driver
+        var = drv.variables.new()
+        var.name = 'target_len'
+        var.type = 'SINGLE_PROP'
+        v_target = var.targets[0]
+        v_target.id = target_obj
+        v_target.data_path = 'lsd_pg_dim_props.length'
+        drv.expression = 'target_len'
+        
+        # Force update
+        host.update_tag()
 
 def update_collision_sync_all(self, context, prop_name: str, mod_name: str, mod_type: str, attr_name: str):
 
@@ -425,8 +460,18 @@ class LSD_PG_Inertial_Properties(bpy.types.PropertyGroup):
     iyz: bpy.props.FloatProperty(name="Iyz", default=0.0)
 
 class LSD_PG_Wrap_Item(bpy.types.PropertyGroup):
-
     target: bpy.props.PointerProperty(type=bpy.types.Object, name="Wrap Object")
+
+class LSD_PG_Dimensions_Master_Item(bpy.types.PropertyGroup):
+    """Represents an entry in the Dimension Master Interface list."""
+    obj: bpy.props.PointerProperty(type=bpy.types.Object, name="Dimension")
+    driver_target: bpy.props.PointerProperty(
+        type=bpy.types.Object, 
+        name="Link Source",
+        description="Pick another dimension to copy its length",
+        poll=lambda self, obj: obj.get("lsd_is_dimension") or obj.get("lsd_is_dimension_root"),
+        update=update_dimension_driver_target
+    )
 
 class LSD_PG_Dimension_Props(bpy.types.PropertyGroup):
 
@@ -788,6 +833,12 @@ class LSD_PG_Asset_Props(bpy.types.PropertyGroup):
     import_target_library: bpy.props.StringProperty(name="Target Library", description="Library where the imported file will be registered.")
     import_target_catalog: bpy.props.StringProperty(name="Target Catalog", description="Catalog folder where the imported file will be added.")
 
+class LSD_PG_Dimensions_Grouped_Set(bpy.types.PropertyGroup):
+    """A persistent group of dimension controllers with its own name and items."""
+    name: bpy.props.StringProperty(name="Set Name", default="Drafting Group")
+    items: bpy.props.CollectionProperty(type=LSD_PG_Dimensions_Master_Item)
+    is_expanded: bpy.props.BoolProperty(default=True)
+
 class LSD_ExportItem(bpy.types.PropertyGroup):
 
     """Item for the export list"""
@@ -801,7 +852,7 @@ class LSD_ExportItem(bpy.types.PropertyGroup):
 
 CLASSES = [
     LSD_PG_Transmission_Properties, LSD_PG_Material_Properties, LSD_PG_Collision_Properties,
-    LSD_PG_Inertial_Properties, LSD_PG_Wrap_Item, LSD_PG_Slinky_Hook, LSD_PG_Mech_Props, LSD_PG_Mimic_Driver,
+    LSD_PG_Inertial_Properties, LSD_PG_Wrap_Item, LSD_PG_Dimensions_Master_Item, LSD_PG_Dimensions_Grouped_Set, LSD_PG_Slinky_Hook, LSD_PG_Mech_Props, LSD_PG_Mimic_Driver,
     LSD_PG_Kinematic_Props, LSD_PG_AI_Props, LSD_PG_Lighting_Props, LSD_PG_Asset_Props,
     LSD_PG_Dimension_Props, LSD_ExportItem
 ]
@@ -1021,8 +1072,10 @@ def register():
     )
     bpy.types.Scene.lsd_anchor_initial_size = bpy.props.FloatProperty(name="Initial Size", default=0.05, min=0.001, unit='LENGTH')
     bpy.types.Scene.lsd_anchor_auto_size = bpy.props.BoolProperty(name="Auto-Size", default=True)
-    # 2. Export List
-    bpy.types.Scene.lsd_export_list = bpy.props.CollectionProperty(type=LSD_ExportItem)
+    # 1.1.2 Dimensions Master System (Contextual Control)
+    # 1.1.2 Dimensions Master System (Multiple Groups Support)
+    bpy.types.Scene.lsd_dimensions_master = bpy.props.CollectionProperty(type=LSD_PG_Dimensions_Master_Item)
+    bpy.types.Scene.lsd_dimensions_grouped_sets = bpy.props.CollectionProperty(type=LSD_PG_Dimensions_Grouped_Set)
 
     # 3. Curve Tools Orientation (Drafting)
     bpy.types.Scene.lsd_curve_vertex_rot = bpy.props.FloatVectorProperty(
@@ -1213,7 +1266,8 @@ def unregister():
             "lsd_tex_pos", "lsd_tex_rot", "lsd_tex_scale",
             "lsd_hook_placement_mode", "lsd_camera_preset", "lsd_anchor_initial_size", "lsd_anchor_auto_size",
             "lsd_show_collisions", "lsd_dim_font_name", "lsd_dim_font_bold", "lsd_dim_font_italic",
-            "lsd_dim_text_offset", "lsd_scale_mode", "lsd_scale_pivot", "lsd_scale_realtime"
+            "lsd_dim_text_offset", "lsd_scale_mode", "lsd_scale_pivot", "lsd_scale_realtime",
+            "lsd_dimensions_master"
         ]
         # Add order props
         prop_names = [

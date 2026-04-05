@@ -71,9 +71,9 @@ from . import properties
 # --- ASSET LIBRARY SYSTEM OPERATORS ---
 
 class LSD_OT_SelectObjectByName(bpy.types.Operator):
-    """Selects an object in the scene by its exact name (LSD Internal Use)."""
+    """Selects a Dimension assembly in the scene by its exact name (LSD Internal Use)."""
     bl_idname = "lsd.select_object_by_name"
-    bl_label = "Select Object"
+    bl_label = "Select Dimension"
     bl_options = {'REGISTER', 'UNDO'}
     
     target_name: bpy.props.StringProperty()
@@ -86,6 +86,150 @@ class LSD_OT_SelectObjectByName(bpy.types.Operator):
             context.view_layer.objects.active = obj
             return {'FINISHED'}
         return {'CANCELLED'}
+
+class LSD_OT_AddToDimensionMaster(bpy.types.Operator):
+    """Adds the selected dimension object to the master interface list."""
+    bl_idname = "lsd.add_to_dimension_master"
+    bl_label = "Add Selected Dimension"
+    bl_description = "Add the currently selected dimension assembly to the tracking list"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    @classmethod
+    def poll(cls, context):
+        from . import core
+        return core.get_dimension_host(context.active_object) is not None
+        
+    def execute(self, context):
+        from . import core
+        host = core.get_dimension_host(context.active_object)
+        if not host:
+            return {'CANCELLED'}
+        
+        # Check for duplicates
+        for item in context.scene.lsd_dimensions_master:
+            if item.obj == host:
+                self.report({'INFO'}, "Dimension already in master list.")
+                return {'FINISHED'}
+        
+        item = context.scene.lsd_dimensions_master.add()
+        item.obj = host
+        return {'FINISHED'}
+
+class LSD_OT_RemoveFromDimensionMaster(bpy.types.Operator):
+    """Removes a dimension from the drafting lists."""
+    bl_idname = "lsd.remove_from_dimension_master"
+    bl_label = "Remove From List"
+    bl_description = "Remove this dimension from the tracking list without deleting the object"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    index: bpy.props.IntProperty()
+    group_index: bpy.props.IntProperty(default=-1)
+    is_grouped: bpy.props.BoolProperty(default=False)
+    
+    def execute(self, context):
+        scene = context.scene
+        if self.is_grouped:
+            sets = scene.lsd_dimensions_grouped_sets
+            if self.group_index >= 0 and self.group_index < len(sets):
+                target_group = sets[self.group_index]
+                if self.index >= 0 and self.index < len(target_group.items):
+                    target_group.items.remove(self.index)
+                    # If the group is now empty, we can optionally remove it, 
+                    # but usually better to let user delete manually.
+                    return {'FINISHED'}
+        else:
+            master = scene.lsd_dimensions_master
+            if self.index >= 0 and self.index < len(master):
+                master.remove(self.index)
+                return {'FINISHED'}
+                
+        return {'CANCELLED'}
+
+class LSD_OT_BakeDimensionsMaster(bpy.types.Operator):
+    """Consolidates selected dimensions into the Master Interface in the Tool Properties tab."""
+    bl_idname = "lsd.bake_dimensions_master"
+    bl_label = "Group for Master Control"
+    bl_description = "Group all selected dimensions into the master list and expose them in the Tool Properties tab for centralized control"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        from . import core
+        # Gather targets from workspace and selection
+        master = context.scene.lsd_dimensions_master
+        target_list = [item.obj for item in master if item.obj]
+        
+        for obj in context.selected_objects:
+            host = core.get_dimension_host(obj)
+            if host and host not in target_list:
+                target_list.append(host)
+        
+        # AI Editor Note: Enforce total uniqueness to prevent the "3 instead of 2" bug
+        unique_targets = []
+        for t in target_list:
+            if t not in unique_targets:
+                unique_targets.append(t)
+        
+        if not unique_targets:
+            self.report({'WARNING'}, "No dimensions in workspace or selected.")
+            return {'CANCELLED'}
+            
+        from . import generators
+        generators.group_dimension_master_list(context, unique_targets)
+        self.report({'INFO'}, f"Grouped {len(unique_targets)} dimensions to a new set (Tool Tab).")
+        return {'FINISHED'}
+
+class LSD_OT_ImportGroupedDimensionsBack(bpy.types.Operator):
+    """Moves a specific group of dimensions back into the Sidebar Workspace."""
+    bl_idname = "lsd.import_grouped_dimensions_back"
+    bl_label = "Import Back"
+    bl_description = "Move this specific dimension set back into the sidebar workspace for editing"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    group_index: bpy.props.IntProperty()
+    
+    def execute(self, context):
+        scene = context.scene
+        sets = scene.lsd_dimensions_grouped_sets
+        master = scene.lsd_dimensions_master
+        
+        if self.group_index < 0 or self.group_index >= len(sets):
+            return {'CANCELLED'}
+            
+        target_group = sets[self.group_index]
+        count = 0
+        for item in target_group.items:
+            host = item.obj
+            if not host: continue
+            
+            # Avoid duplicates in workspace
+            if not any(m.obj == host for m in master):
+                new_item = master.add()
+                new_item.obj = host
+                # PERSISTENT LINK SOURCE: Ensure we copy the reference back
+                new_item.driver_target = item.driver_target
+                count += 1
+        
+        sets.remove(self.group_index)
+        self.report({'INFO'}, f"Imported {count} dimensions back to Sidebar.")
+        return {'FINISHED'}
+
+class LSD_OT_ClearGroupedDimensions(bpy.types.Operator):
+    """Deletes a specific persistent dimension set."""
+    bl_idname = "lsd.clear_grouped_dimensions"
+    bl_label = "Delete Group"
+    bl_description = "Delete this specific persistent dimension set. Dimension objects are not deleted."
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    group_index: bpy.props.IntProperty()
+    
+    def invoke(self, context, event):
+        return context.window_manager.invoke_confirm(self, event)
+        
+    def execute(self, context):
+        sets = context.scene.lsd_dimensions_grouped_sets
+        if self.group_index >= 0 and self.group_index < len(sets):
+            sets.remove(self.group_index)
+        return {'FINISHED'}
 
 class LSD_OT_Open_Asset_Browser(bpy.types.Operator):
 
@@ -9358,8 +9502,9 @@ def register():
         LSD_OT_ExportList_Remove, LSD_OT_Export, LSD_OT_ExportSelected, LSD_OT_TogglePlacement, 
         LSD_OT_CreateRig, LSD_OT_MergeArmatures, LSD_OT_PurgeBones, LSD_OT_ParentToActive, 
         LSD_OT_EnterPoseMode, LSD_OT_EnterObjectMode, LSD_OT_AddBone, LSD_OT_ApplyRestPose,
-        LSD_OT_AccurateScale, LSD_OT_Dimension_AutoScale, LSD_OT_CommitPathAlignment,
-        LSD_OT_SelectObjectByName
+        LSD_OT_AccurateScale, LSD_OT_CommitPathAlignment,
+        LSD_OT_SelectObjectByName, LSD_OT_AddToDimensionMaster, LSD_OT_RemoveFromDimensionMaster, LSD_OT_BakeDimensionsMaster,
+        LSD_OT_ImportGroupedDimensionsBack, LSD_OT_ClearGroupedDimensions
     ]
     for cls in CLASSES:
 
@@ -9396,8 +9541,9 @@ def unregister():
         LSD_OT_ExportList_Remove, LSD_OT_Export, LSD_OT_ExportSelected, LSD_OT_TogglePlacement, 
         LSD_OT_CreateRig, LSD_OT_MergeArmatures, LSD_OT_PurgeBones, LSD_OT_ParentToActive, 
         LSD_OT_EnterPoseMode, LSD_OT_EnterObjectMode, LSD_OT_AddBone, LSD_OT_ApplyRestPose,
-        LSD_OT_AccurateScale, LSD_OT_Dimension_AutoScale, LSD_OT_CommitPathAlignment,
-        LSD_OT_SelectObjectByName
+        LSD_OT_AccurateScale, LSD_OT_CommitPathAlignment,
+        LSD_OT_SelectObjectByName, LSD_OT_AddToDimensionMaster, LSD_OT_RemoveFromDimensionMaster, LSD_OT_BakeDimensionsMaster,
+        LSD_OT_ImportGroupedDimensionsBack, LSD_OT_ClearGroupedDimensions
     ]
     for cls in reversed(CLASSES):
 

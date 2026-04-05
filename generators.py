@@ -867,3 +867,43 @@ def generate_smart_dimension_parametric(context, p1, p2, name="Dimension", paren
     txt_obj.select_set(True)
     context.view_layer.objects.active = txt_obj
     return txt_obj
+
+def group_dimension_master_list(context, dim_objs):
+    """
+    Migrates provided dimensions from the work list (sidebar) into a NEW 
+    persistent Grouped Set (Tool Tab).
+    """
+    scene = context.scene
+    master = scene.lsd_dimensions_master            # Sidebar Workspace
+    sets = scene.lsd_dimensions_grouped_sets        # Persistent Collection of Sets
+    
+    # AI Editor Note: Creating a NEW set for this grouping batch
+    group_name = f"Group {len(sets) + 1}"
+    new_set = sets.add()
+    new_set.name = group_name
+    
+    for host in dim_objs:
+        # Move objects to the new group set
+        new_item = new_set.items.add()
+        new_item.obj = host
+        
+        # Check if this object was in the sidebar to copy its driver target
+        # (Though direct linking in master is preferred)
+        sidebar_item = next((m for m in master if m.obj == host), None)
+        if sidebar_item:
+            new_item.driver_target = sidebar_item.driver_target
+            
+    # Always clear the workspace list as requested
+    master.clear()
+            
+    # AI Editor Note: Using a safer try-catch context switch to prevent "Failed to find" error
+    try:
+        for area in context.screen.areas:
+            if area.type == 'PROPERTIES':
+                if hasattr(area.spaces.active, 'context'):
+                    area.spaces.active.context = 'TOOL'
+                break
+    except:
+        pass
+            
+    return {'FINISHED'}

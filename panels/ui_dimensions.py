@@ -273,46 +273,46 @@ class LSD_PT_Dimensions_And_Precision_Transforms:
 
                 
 
-                # --- NEW: Dimensions Master Interface (Consolidated Manager) ---
-                # Provides a unified list of all dimensions for rapid renaming and length management.
-                col.separator()
-                master_box = col.box()
-                master_box.label(text="Dimensions Master Interface", icon='OUTLINER')
-                
-                # Collect all unique dimension host objects in the active scene
-                dim_hosts = [o for o in context.scene.objects if o.get("lsd_is_dimension")]
-                
-                if not dim_hosts:
-                    master_box.label(text="No active assemblies found.")
-                else:
-                    for host in dim_hosts:
-                        row = master_box.row(align=True)
-                        # Name Management
-                        row.prop(host, "name", text="")
-                        
-                        # Direct Length Edit (Synced through LSD Timer system)
-                        dim_props = host.lsd_pg_dim_props
-                        row.prop(dim_props, "length", text="Line Length")
-                        
-                        # Selection Hook (Helps identify which dimension is being edited)
-                        op = row.operator("lsd.select_object_by_name", text="", icon='RESTRICT_SELECT_OFF')
-                        op.target_name = host.name
-
+            # --- Dimensions Master Interface (Consolidated Manager) ---
+            # Provides a unified list of dimensions for selective renaming, length management, and baking.
+            col.separator()
+            master_box = col.box()
+            master_box.label(text="Dimensions Master Interface", icon='OUTLINER')
+            
+            # New Feature: Manual List Management
+            row = master_box.row()
+            row.operator("lsd.add_to_dimension_master", text="Track Selected Dimension", icon='ADD')
+            
+            master = context.scene.lsd_dimensions_master
+            if not master:
+                master_box.label(text="No tracked dimensions in master list.", icon='INFO')
             else:
-                col.label(text="Select a dimension arrow to adjust", icon='INFO')
-                
-                # Master Interface remains visible even if no dimension is active
-                # (Allows users to find and focus on existing assemblies)
-                col.separator()
-                master_box = col.box()
-                master_box.label(text="Dimensions Master Interface", icon='OUTLINER')
-                dim_hosts = [o for o in context.scene.objects if o.get("lsd_is_dimension")]
-                for host in dim_hosts:
+                for idx, item in enumerate(master):
+                    host = item.obj
+                    if not host:
+                        continue
+                    
                     row = master_box.row(align=True)
-                    row.prop(host, "name", text="")
-                    row.prop(host.lsd_pg_dim_props, "length", text="Line Length")
+                    # Selection (Tooltip derived from bl_label)
                     op = row.operator("lsd.select_object_by_name", text="", icon='RESTRICT_SELECT_OFF')
                     op.target_name = host.name
+                    
+                    # Name & Length sync
+                    row.prop(host, "name", text="")
+                    row.prop(host.lsd_pg_dim_props, "length", text="Length")
+                    
+                    # LINK DRIVER (Eyedropper) - Category 4 Logic
+                    row.prop(item, "driver_target", text="", icon='EYEDROPPER')
+
+                    # New Feature: Individual removal (X)
+                    rem_op = row.operator("lsd.remove_from_dimension_master", text="", icon='X')
+                    rem_op.index = idx
+            
+            # New Feature: Consolidated Exposure (Protocol Switch)
+            if master:
+                master_box.separator()
+                # AI Editor Note: 'Bake' now triggers tool property consolidation
+                master_box.operator("lsd.bake_dimensions_master", text="Group for Master Control", icon='GEOMETRY_NODES')
 
 
             # --- Accurate Scale (New) ---
@@ -343,11 +343,88 @@ class LSD_PT_Dimensions_And_Precision_Transforms:
 
             
 
-def register():
 
-    pass
+class LSD_PT_Dimensions_Tool_Properties(bpy.types.Panel):
+    """
+    Exposes the persistent Dimensions Master Interface.
+    Visible in Properties Editor -> Tool tab OR 3D Viewport Sidebar -> Tool tab.
+    """
+    bl_label = "Dimensions Grouped Control"
+    bl_idname = "LSD_PT_Dimensions_Tool_Properties"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = 'Tool'
+    bl_options = {'DEFAULT_CLOSED'}
+
+    @classmethod
+    def poll(cls, context: bpy.types.Context) -> bool:
+        # Show if we have grouped dimensions or a dimension is selected
+        grouped = getattr(context.scene, "lsd_dimensions_grouped", [])
+        if len(grouped) > 0:
+            return True
+            
+        obj = context.active_object
+        if obj:
+             from .. import core
+             if core.get_dimension_host(obj):
+                  return True
+        return False
+
+    def draw(self, context: bpy.types.Context) -> None:
+        layout = self.layout
+        scene = context.scene
+        grouped_sets = scene.lsd_dimensions_grouped_sets
+        
+        if not grouped_sets:
+            layout.label(text="No grouped dimensions.", icon='INFO')
+            return
+
+        for g_idx, group in enumerate(grouped_sets):
+            box = layout.box()
+            header = box.row()
+            # Collapse/Expand Toggle
+            icon = 'DISCLOSURE_TRI_DOWN' if group.is_expanded else 'DISCLOSURE_TRI_RIGHT'
+            header.prop(group, "is_expanded", text="", icon=icon, emboss=False)
+            
+            # Group Naming & Management Actions
+            header.prop(group, "name", text="")
+            
+            manage_row = header.row(align=True)
+            imp_op = manage_row.operator("lsd.import_grouped_dimensions_back", text="", icon='IMPORT')
+            imp_op.group_index = g_idx
+            
+            del_op = manage_row.operator("lsd.clear_grouped_dimensions", text="", icon='TRASH')
+            del_op.group_index = g_idx
+
+            if group.is_expanded:
+                box.separator()
+                for idx, item in enumerate(group.items):
+                    host = item.obj
+                    if not host: continue
+                    
+                    row = box.row(align=True)
+                    # Sync Mode Toggle (Manual vs Link)
+                    icon = 'DOT' if host.lsd_pg_dim_props.is_manual else 'OUTLINER_OB_FORCE_FIELD'
+                    row.prop(host.lsd_pg_dim_props, "is_manual", text="", icon=icon, emboss=False)
+                    
+                    # Selection & Focus
+                    op = row.operator("lsd.select_object_by_name", text="", icon='RESTRICT_SELECT_OFF')
+                    op.target_name = host.name
+                    
+                    # Sub-Row for property controls
+                    controls = row.row(align=True)
+                    controls.prop(host, "name", text="")
+                    controls.prop(host.lsd_pg_dim_props, "length", text="Length")
+                    
+                    # Removal (Individual)
+                    rem_op = row.operator("lsd.remove_from_dimension_master", text="", icon='X')
+                    rem_op.index = idx
+                    rem_op.group_index = g_idx
+                    rem_op.is_grouped = True
+
+def register():
+    bpy.utils.register_class(LSD_PT_Dimensions_Tool_Properties)
 
 def unregister():
-
-    pass
+    bpy.utils.unregister_class(LSD_PT_Dimensions_Tool_Properties)
 
