@@ -874,8 +874,8 @@ def group_dimension_master_list(context, dim_objs):
     persistent Grouped Set (Tool Tab).
     """
     scene = context.scene
-    master = scene.lsd_dimensions_master            # Sidebar Workspace
-    sets = scene.lsd_dimensions_grouped_sets        # Persistent Collection of Sets
+    master = scene.lsd_dimensions_master            
+    sets = scene.lsd_dimensions_grouped_sets        
     
     # AI Editor Note: Creating a NEW set for this grouping batch
     group_name = f"Group {len(sets) + 1}"
@@ -883,27 +883,40 @@ def group_dimension_master_list(context, dim_objs):
     new_set.name = group_name
     
     for host in dim_objs:
-        # Move objects to the new group set
         new_item = new_set.items.add()
         new_item.obj = host
         
-        # Check if this object was in the sidebar to copy its driver target
-        # (Though direct linking in master is preferred)
+        # 1. Recover Driver Target from Sidebar (Priority)
         sidebar_item = next((m for m in master if m.obj == host), None)
-        if sidebar_item:
-            new_item.driver_target = sidebar_item.driver_target
-            
+        if sidebar_item and sidebar_item.driver_target:
+             new_item.driver_target = sidebar_item.driver_target
+        
+        # 2. Heuristic Driver Recovery (Fallback for Viewport-only selection)
+        # If no sidebar entry exists, inspect the object's animation data to find the driver source.
+        elif host.animation_data:
+             for drv_info in host.animation_data.drivers:
+                  if 'lsd_pg_dim_props.length' in drv_info.data_path:
+                       # Find the first target object in the driver variables
+                       for var in drv_info.driver.variables:
+                            for target in var.targets:
+                                 if target.id and target.id.get("lsd_is_dimension"):
+                                      new_item.driver_target = target.id
+                                      break
+                            if new_item.driver_target: break
+                  if new_item.driver_target: break
+
     # Always clear the workspace list as requested
     master.clear()
             
-    # AI Editor Note: Using a safer try-catch context switch to prevent "Failed to find" error
-    try:
-        for area in context.screen.areas:
-            if area.type == 'PROPERTIES':
-                if hasattr(area.spaces.active, 'context'):
-                    area.spaces.active.context = 'TOOL'
-                break
-    except:
-        pass
+    # AI Editor Note: Using a safer context switch. 
+    # "Failed to find ''" often comes from trying to set context when no object is active.
+    for area in context.screen.areas:
+        if area.type == 'PROPERTIES':
+            try:
+                # Ensure something is selected/active if needed, though usually not for TOOL
+                area.spaces.active.context = 'TOOL'
+            except:
+                pass
+            break
             
     return {'FINISHED'}
