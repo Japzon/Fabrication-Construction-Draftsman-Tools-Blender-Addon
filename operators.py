@@ -70,7 +70,25 @@ from . import properties
 
 # --- ASSET LIBRARY SYSTEM OPERATORS ---
 
+class LSD_OT_SelectObjectByName(bpy.types.Operator):
+    """Selects an object in the scene by its exact name (LSD Internal Use)."""
+    bl_idname = "lsd.select_object_by_name"
+    bl_label = "Select Object"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    target_name: bpy.props.StringProperty()
+    
+    def execute(self, context):
+        obj = bpy.data.objects.get(self.target_name)
+        if obj:
+            bpy.ops.object.select_all(action='DESELECT')
+            obj.select_set(True)
+            context.view_layer.objects.active = obj
+            return {'FINISHED'}
+        return {'CANCELLED'}
+
 class LSD_OT_Open_Asset_Browser(bpy.types.Operator):
+
 
     """Opens the Blender Asset Browser window."""
     bl_idname = "lsd.open_asset_browser"
@@ -4108,6 +4126,7 @@ def setup_dimension_gn(text_obj: bpy.types.Object, obj_a: bpy.types.Object, obj_
         g_out.location = (800, 0)
         # Get Locations
         info_a = nodes.new('GeometryNodeObjectInfo')
+
         info_a.location = (-600, 100)
         info_a.transform_space = 'RELATIVE'
 
@@ -5208,25 +5227,29 @@ class LSD_OT_CreateCurveForPath(bpy.types.Operator):
         items=[
             ('BEZIER', "Bezier Path", "Draft a path using Bezier control points"),
             ('NURBS', "NURBS Path", "Draft a path using NURBS control points"),
-            ('POLY', "Vertex Mesh", "Spawn a real mesh vertex object for precision vertex-instancing"),
+            ('POLY', "Mesh Vertex", "Spawn a real mesh vertex object for precision vertex-instancing"),
         ],
+
         default='BEZIER'
     )
 
     def execute(self, context: bpy.types.Context) -> Set[str]:
+        import bmesh
         # Ensure we are in object mode before creating new objects
         if context.mode != 'OBJECT':
             bpy.ops.object.mode_set(mode='OBJECT')
 
         if self.type == 'POLY':
-            # Create a real MESH object with a single vertex
-            mesh_data = bpy.data.meshes.new("Path_Vertex_Data")
+            # Create a real MESH object with a single vertex 
+            mesh_data = bpy.data.meshes.new("Path0_Data")
             bm = bmesh.new()
-            bm.verts.new((0, 0, 0))
+            bm.verts.new((0, 0, 0)) # Start with a pure, single point
             bm.to_mesh(mesh_data)
             bm.free()
             
-            path_obj = bpy.data.objects.new("Path_Vertex", mesh_data)
+            path_obj = bpy.data.objects.new("Path_Origin", mesh_data)
+
+
             path_obj.location = context.scene.cursor.location
             context.collection.objects.link(path_obj)
             
@@ -5236,7 +5259,15 @@ class LSD_OT_CreateCurveForPath(bpy.types.Operator):
             path_obj.select_set(True)
             bpy.ops.object.mode_set(mode='EDIT')
             
-            self.report({'INFO'}, f"Spawned new vertex mesh '{path_obj.name}' at cursor.")
+            # --- SELECTION FIX: Select the single vertex for immediate path extension ---
+            bm = bmesh.from_edit_mesh(path_obj.data)
+            for v in bm.verts: v.select = True
+            bmesh.update_edit_mesh(path_obj.data)
+
+
+            
+            self.report({'INFO'}, f"Spawned new Mesh Vertex '{path_obj.name}' at cursor.")
+
             return {'FINISHED'}
 
         # Create curve data and object
@@ -5408,7 +5439,12 @@ class LSD_OT_SetupCurveArray(bpy.types.Operator):
                     self.report({'WARNING'}, f"Object '{obj.name}' cannot use DEFORM on a non-curve path.")
                     continue
 
+                # --- NEW: Synchronize origins to prevent "floating" displacement ---
+                # The object should be at the curve's location for accurate deformation.
+                obj.matrix_world.translation = path_obj.matrix_world.translation
+
                 array_mod = obj.modifiers.new(f"{MOD_PREFIX}FollowPath_Array", 'ARRAY')
+
                 array_mod.fit_type = 'FIT_CURVE'
                 array_mod.curve = path_obj
                 array_mod.use_relative_offset = True
@@ -9322,7 +9358,8 @@ def register():
         LSD_OT_ExportList_Remove, LSD_OT_Export, LSD_OT_ExportSelected, LSD_OT_TogglePlacement, 
         LSD_OT_CreateRig, LSD_OT_MergeArmatures, LSD_OT_PurgeBones, LSD_OT_ParentToActive, 
         LSD_OT_EnterPoseMode, LSD_OT_EnterObjectMode, LSD_OT_AddBone, LSD_OT_ApplyRestPose,
-        LSD_OT_AccurateScale, LSD_OT_Dimension_AutoScale, LSD_OT_CommitPathAlignment
+        LSD_OT_AccurateScale, LSD_OT_Dimension_AutoScale, LSD_OT_CommitPathAlignment,
+        LSD_OT_SelectObjectByName
     ]
     for cls in CLASSES:
 
@@ -9359,7 +9396,8 @@ def unregister():
         LSD_OT_ExportList_Remove, LSD_OT_Export, LSD_OT_ExportSelected, LSD_OT_TogglePlacement, 
         LSD_OT_CreateRig, LSD_OT_MergeArmatures, LSD_OT_PurgeBones, LSD_OT_ParentToActive, 
         LSD_OT_EnterPoseMode, LSD_OT_EnterObjectMode, LSD_OT_AddBone, LSD_OT_ApplyRestPose,
-        LSD_OT_AccurateScale, LSD_OT_Dimension_AutoScale, LSD_OT_CommitPathAlignment
+        LSD_OT_AccurateScale, LSD_OT_Dimension_AutoScale, LSD_OT_CommitPathAlignment,
+        LSD_OT_SelectObjectByName
     ]
     for cls in reversed(CLASSES):
 

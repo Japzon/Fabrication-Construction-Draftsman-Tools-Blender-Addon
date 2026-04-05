@@ -579,8 +579,11 @@ def setup_gn_for_rigid_array(path_obj: bpy.types.Object):
         links.new(resample.outputs['Curve'], instance_node.inputs['Points'])
         
         # 3. Handle Object Input
+        # FIX: Using 'ORIGINAL' ensures the instances are snapped directly to the path
+        # without being displaced by the blueprint object's world location.
         info_node = nodes.new('GeometryNodeObjectInfo')
-        info_node.transform_space = 'RELATIVE'
+        info_node.transform_space = 'ORIGINAL'
+
         links.new(input_node.outputs['Instance Object'], info_node.inputs['Object'])
         links.new(info_node.outputs['Geometry'], instance_node.inputs['Instance'])
         
@@ -593,9 +596,16 @@ def setup_gn_for_rigid_array(path_obj: bpy.types.Object):
         links.new(tangent_node.outputs['Tangent'], align_node.inputs['Vector'])
         links.new(align_node.outputs['Rotation'], instance_node.inputs['Rotation'])
         
-        links.new(instance_node.outputs['Instances'], output_node.inputs['Geometry'])
+        # 5. Output Final Mix (Join instances with original path geometry)
+        # This prevents the path from "disappearing" or being displaced visually.
+        join_output = nodes.new('GeometryNodeJoinGeometry')
+        links.new(path_switch.outputs[0], join_output.inputs[0]) # The original path
+        links.new(instance_node.outputs['Instances'], join_output.inputs[0]) # The instances
+        
+        links.new(join_output.outputs['Geometry'], output_node.inputs['Geometry'])
         
     return group
+
 
 
 

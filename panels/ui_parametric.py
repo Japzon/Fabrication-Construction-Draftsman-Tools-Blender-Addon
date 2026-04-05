@@ -87,7 +87,10 @@ class LSD_PT_Procedural_Toolkit:
             # 1. Spawn Vertex: Drafting tool for path and vertex generation
             row.operator_menu_enum("lsd.create_curve_for_path", "type", text="Spawn Vertex", icon='ADD')
             
-            # 2. Follow Path: Path-based instancing (Rigid or Deform)
+            # --- Technical Note (Mechatronic Drafting) ---
+            # 'Mesh Vertex' allows for high-precision vertex-instancing, while
+            # 'Bezier/NURBS Path' provides flexible drafting for hoses and cables.
+
             row.operator_menu_enum("lsd.setup_curve_array", "mode", text="Follow Path", icon='HOOK')
 
             # --- Vertex Axis Alignments (Precision Snap) ---

@@ -244,53 +244,76 @@ class LSD_PT_Dimensions_And_Precision_Transforms:
                 row_style_inner.prop(dim_props, "font_italic", toggle=True, icon='ITALIC')
                 col.prop(dim_props, "flip_text", text="Flip Text")
 
-                col.prop(dim_props, "text_rotation", text="Text Rotation")
-
                 col.prop(dim_props, "unit_display", text="Units")
 
-                
-
-                # Planar Display Mode Toggle
-
+                # --- Swapped Section: Alignment Tools ---
                 col.separator()
-
-                col.label(text="Dimension Offset Alignment", icon='VIEW_ORTHO')
-
                 
-
-                # Layout the options in a grid-like fashion
-
-                row_pos = col.row(align=True)
-
-                row_pos.prop(dim_props, "align_x", toggle=True, text="+X")
-
-                row_pos.prop(dim_props, "align_y", toggle=True, text="+Y")
-
-                row_pos.prop(dim_props, "align_z", toggle=True, text="+Z")
-
-                
-
-                row_neg = col.row(align=True)
-
-                row_neg.prop(dim_props, "align_nx", toggle=True, text="-X")
-
-                row_neg.prop(dim_props, "align_ny", toggle=True, text="-Y")
-
-                row_neg.prop(dim_props, "align_nz", toggle=True, text="-Z")
-
-                
-
-                col.separator()
-
+                # 1. Text Alignment (Refined Priority)
                 col.label(text="Text Alignment", icon='ALIGN_CENTER')
-
                 row_text = col.row(align=True)
-
                 row_text.prop(dim_props, "text_alignment", expand=True)
 
-            else:
+                col.separator()
 
+                # 2. Offset Alignment (Orthographic Constraints)
+                col.label(text="Dimension Offset Alignment", icon='VIEW_ORTHO')
+                
+                grid_col = col.column(align=True)
+                row_pos = grid_col.row(align=True)
+                row_pos.prop(dim_props, "align_x", toggle=True, text="+X")
+                row_pos.prop(dim_props, "align_y", toggle=True, text="+Y")
+                row_pos.prop(dim_props, "align_z", toggle=True, text="+Z")
+                
+                row_neg = grid_col.row(align=True)
+                row_neg.prop(dim_props, "align_nx", toggle=True, text="-X")
+                row_neg.prop(dim_props, "align_ny", toggle=True, text="-Y")
+                row_neg.prop(dim_props, "align_nz", toggle=True, text="-Z")
+
+
+                
+
+                # --- NEW: Dimensions Master Interface (Consolidated Manager) ---
+                # Provides a unified list of all dimensions for rapid renaming and length management.
+                col.separator()
+                master_box = col.box()
+                master_box.label(text="Dimensions Master Interface", icon='OUTLINER')
+                
+                # Collect all unique dimension host objects in the active scene
+                dim_hosts = [o for o in context.scene.objects if o.get("lsd_is_dimension")]
+                
+                if not dim_hosts:
+                    master_box.label(text="No active assemblies found.")
+                else:
+                    for host in dim_hosts:
+                        row = master_box.row(align=True)
+                        # Name Management
+                        row.prop(host, "name", text="")
+                        
+                        # Direct Length Edit (Synced through LSD Timer system)
+                        dim_props = host.lsd_pg_dim_props
+                        row.prop(dim_props, "length", text="Line Length")
+                        
+                        # Selection Hook (Helps identify which dimension is being edited)
+                        op = row.operator("lsd.select_object_by_name", text="", icon='RESTRICT_SELECT_OFF')
+                        op.target_name = host.name
+
+            else:
                 col.label(text="Select a dimension arrow to adjust", icon='INFO')
+                
+                # Master Interface remains visible even if no dimension is active
+                # (Allows users to find and focus on existing assemblies)
+                col.separator()
+                master_box = col.box()
+                master_box.label(text="Dimensions Master Interface", icon='OUTLINER')
+                dim_hosts = [o for o in context.scene.objects if o.get("lsd_is_dimension")]
+                for host in dim_hosts:
+                    row = master_box.row(align=True)
+                    row.prop(host, "name", text="")
+                    row.prop(host.lsd_pg_dim_props, "length", text="Line Length")
+                    op = row.operator("lsd.select_object_by_name", text="", icon='RESTRICT_SELECT_OFF')
+                    op.target_name = host.name
+
 
             # --- Accurate Scale (New) ---
 
