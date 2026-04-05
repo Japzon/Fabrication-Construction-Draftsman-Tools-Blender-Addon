@@ -84,8 +84,10 @@ class LSD_PT_Dimensions_And_Precision_Transforms:
 
                         # AI Editor Note: Added anchor sizing controls (Project Task 1.1.2)
             row_size = anchor_box.row(align=True)
-            row_size.prop(scene, "lsd_anchor_initial_size", text="Anchor Size")
+            row_size.prop(scene, "lsd_anchor_initial_size", text="Initial Size")
             row_size.prop(scene, "lsd_anchor_auto_size", text="Auto-Size", icon='AUTO')
+            anchor_box.prop(scene, "lsd_anchor_placement_source", text="Generate At")
+            anchor_box.prop(scene, "lsd_anchor_grouping_mode", text="Anchor Grouping")
             
             anchor_box.separator()
 
@@ -99,11 +101,11 @@ class LSD_PT_Dimensions_And_Precision_Transforms:
 
             if context.scene.lsd_hook_placement_mode:
 
-                anchor_box.operator("lsd.toggle_hook_placement", text="Stop Hook/Marker Transform Mode", icon='CHECKMARK')
+                anchor_box.operator("lsd.toggle_hook_placement", text="Stop Anchor Transform Mode", icon='CHECKMARK')
 
             else:
 
-                anchor_box.operator("lsd.toggle_hook_placement", text="Start Hook/Marker Transform Mode", icon='TRANSFORM_ORIGINS')
+                anchor_box.operator("lsd.toggle_hook_placement", text="Start Anchor Transform Mode", icon='TRANSFORM_ORIGINS')
 
             
 
@@ -179,7 +181,7 @@ class LSD_PT_Dimensions_And_Precision_Transforms:
 
                 col.separator()
 
-                col.operator("lsd.remove_dimension", text="Remove Selected Dimension", icon='TRASH')
+                col.operator("lsd.remove_dimension", text="Remove Selected Dimensions", icon='TRASH')
 
             
 
@@ -214,6 +216,7 @@ class LSD_PT_Dimensions_And_Precision_Transforms:
                 col.prop(dim_props, "offset", text="Offset from Target")
 
                 col.operator("lsd.dimension_auto_scale", text="Auto Size Components", icon='AUTO')
+                col.operator("lsd.register_default_proportions", text="Register Custom Proportions", icon='SETTINGS')
 
                 
 
@@ -221,7 +224,15 @@ class LSD_PT_Dimensions_And_Precision_Transforms:
 
                 col.prop(dim_props, "use_extension_lines", text="Use Extension Lines")
 
-                col.prop(dim_props, "text_color", text="Label Color")
+                color_box = col.box()
+                scene = context.scene # Defined locally for the property check
+                color_row = color_box.row(align=True)
+                color_row.prop(scene, "lsd_dim_global_text_color_sync", text="Force Global Sync", icon='WORLD')
+                
+                if scene.lsd_dim_global_text_color_sync:
+                    color_box.prop(scene, "lsd_dim_universal_text_color", text="Universal Label Color")
+                else:
+                    color_box.prop(dim_props, "text_color", text="Selected Label Color")
 
                 # Architecture and Engineering fonts feature
 

@@ -897,6 +897,35 @@ def register():
         items=[('X', "X", ""), ('Y', "Y", ""), ('Z', "Z", ""), ('ALL', "All Axes", "")], 
         default='ALL'
     )
+    # Unified Proportion Ratios (Dynamic Defaults the user can register)
+    bpy.types.Scene.lsd_dim_ratio_arrow = bpy.props.FloatProperty(name="Arrow Ratio", default=0.2, min=0.001)
+    bpy.types.Scene.lsd_dim_ratio_text = bpy.props.FloatProperty(name="Text Ratio", default=0.1, min=0.001)
+    bpy.types.Scene.lsd_dim_ratio_thick = bpy.props.FloatProperty(name="Thick Ratio", default=0.004, min=0.0001)
+    bpy.types.Scene.lsd_dim_ratio_text_off = bpy.props.FloatProperty(name="Text Off Ratio", default=0.06, min=0.001)
+    bpy.types.Scene.lsd_dim_ratio_offset = bpy.props.FloatProperty(name="Offset Ratio", default=0.15, min=0.001)
+
+    # 1.1.3 Global Color Sync Logic
+    def update_dim_color_sync(self, context):
+        from . import core
+        # Force refresh of all dimension materials in the scene
+        for obj in bpy.data.objects:
+            if obj.get("lsd_is_dimension"):
+                core.get_or_create_text_material(obj)
+
+    bpy.types.Scene.lsd_dim_global_text_color_sync = bpy.props.BoolProperty(
+        name="Global Color Sync", 
+        default=True,
+        update=update_dim_color_sync
+    )
+    bpy.types.Scene.lsd_dim_universal_text_color = bpy.props.FloatVectorProperty(
+        name="Universal Label Color", 
+        subtype='COLOR', 
+        size=4, 
+        min=0.0, max=1.0, # Explicit hard-limit for color wheel range
+        default=(0.0, 0.0, 0.0, 1.0),
+        update=update_dim_color_sync
+    )
+
     # Global Font Defaults for new dimensions and descriptors
     bpy.types.Scene.lsd_dim_font_name = bpy.props.EnumProperty(
         name="Default Font",
@@ -908,6 +937,8 @@ def register():
             ('SIMPLEX', "Simplex", ""), ('ARCHITXT', "Architxt", ""), ('ROMANS', "RomanS", ""),
             ('CITY', "City Blueprint", ""), ('ISO', "ISOCPEUR", ""), ('STYLUS', "Stylus BT", ""),
             ('ARCH_DAUGHTER', "Architect's Daughter", ""), ('POPPINS', "Poppins", ""),
+            ('TAHOMA', "Tahoma", ""), ('VERDANA', "Verdana", ""), ('SEGOE', "Segoe UI", ""),
+            ('TREBUCHET', "Trebuchet MS", ""),
             ('QUICKSAND', "Quicksand", ""), ('BAUHAUS', "Bauhaus 93", ""),
             ('SPACE', "Space Grotesk", ""), ('MONTSERRAT', "Montserrat", "")
         ],
@@ -918,8 +949,18 @@ def register():
 
     
 
-        # 1.1.2 Anchor Globals (New Feature Request)
-    bpy.types.Scene.lsd_anchor_initial_size = bpy.props.FloatProperty(name="Anchor Size", default=0.05, min=0.001, unit='LENGTH')
+    # 1.1.2 Anchor Globals (New Feature Request)
+    bpy.types.Scene.lsd_anchor_placement_source = bpy.props.EnumProperty(
+        name="Placement Mode",
+        items=[('SELECTED', "Selected Origin/Center", ""), ('CURSOR', "3D Cursor", "")],
+        default='CURSOR'
+    )
+    bpy.types.Scene.lsd_anchor_grouping_mode = bpy.props.EnumProperty(
+        name="Grouping Mode",
+        items=[('GROUP', "Grouped (Single Anchor)", ""), ('INDIVIDUAL', "Individual (Per-Selection)", "")],
+        default='GROUP'
+    )
+    bpy.types.Scene.lsd_anchor_initial_size = bpy.props.FloatProperty(name="Initial Size", default=0.05, min=0.001, unit='LENGTH')
     bpy.types.Scene.lsd_anchor_auto_size = bpy.props.BoolProperty(name="Auto-Size", default=True)
     # 2. Export List
     bpy.types.Scene.lsd_export_list = bpy.props.CollectionProperty(type=LSD_ExportItem)

@@ -685,11 +685,11 @@ def generate_smart_dimension_parametric(context, p1, p2, name="Dimension", paren
     v_text_offset = scene.lsd_dim_text_offset
     # Auto-Scaling logic on spawn
     if scene.lsd_dim_auto_scale_on_spawn:
-        v_arrow = initial_length * 0.2
-        v_text = initial_length * 0.1
-        v_thick = initial_length * 0.004
-        v_text_offset = initial_length * 0.06
-        v_offset = initial_length * 0.15
+        v_arrow = initial_length * getattr(scene, 'lsd_dim_ratio_arrow', 0.2)
+        v_text = initial_length * getattr(scene, 'lsd_dim_ratio_text', 0.1)
+        v_thick = initial_length * getattr(scene, 'lsd_dim_ratio_thick', 0.004)
+        v_text_offset = initial_length * getattr(scene, 'lsd_dim_ratio_text_off', 0.06)
+        v_offset = initial_length * getattr(scene, 'lsd_dim_ratio_offset', 0.15)
         # Guards
         if v_arrow < 0.001: v_arrow = 0.001
         if v_text < 0.001: v_text = 0.001
@@ -717,19 +717,28 @@ def generate_smart_dimension_parametric(context, p1, p2, name="Dimension", paren
     # REAL-TIME SYNC: Establish a master-slave hierarchy.
     # The dimension is the MASTER. Both hooks (meshes) are pulled/pushed 
     # as the dimension moves or changes length by constraining them to our anchors.
+    def apply_dim_constraint(obj, target, suffix):
+        # Check for existing constraint to avoid fighting (Project Task 1.1.2 Stability Pass)
+        for con in obj.constraints:
+            if con.type == 'COPY_LOCATION' and con.target and con.target.get("lsd_is_dimension_anchor") == "MASTER":
+                # If it already points to the same root, we are done
+                if con.target.parent == root: return con
+                # If it points to a DIFFERENT dimension, we might want to disable it?
+                # For now, let's just ensure we don't stack multiple active ones.
+                # We disable the old one to let the fresh one take over.
+                con.enabled = False
+        
+        con = obj.constraints.new('COPY_LOCATION')
+        con.target = target
+        con.use_offset = False
+        obj["lsd_is_dimension_hook"] = suffix
+        return con
+
     if parent_a and parent_a[0]:
-        start_mesh_hook = parent_a[0]
-        con_a = start_mesh_hook.constraints.new('COPY_LOCATION')
-        con_a.target = aa_master
-        con_a.use_offset = False
-        start_mesh_hook["lsd_is_dimension_hook"] = "START"
+        apply_dim_constraint(parent_a[0], aa_master, "START")
         
     if parent_b and parent_b[0]:
-        target_mesh_hook = parent_b[0]
-        con_b = target_mesh_hook.constraints.new('COPY_LOCATION')
-        con_b.target = ab_master
-        con_b.use_offset = False
-        target_mesh_hook["lsd_is_dimension_hook"] = "END"
+        apply_dim_constraint(parent_b[0], ab_master, "END")
     
     # Pass 4: Final visual pass
     if hasattr(core, 'update_arrow_settings'):

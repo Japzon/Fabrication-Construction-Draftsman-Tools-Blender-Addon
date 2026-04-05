@@ -11,7 +11,7 @@
 bl_info = {
     "name": "Layouts & Systems Draftsman Toolkit",
     "author": "Greenlex Systems Services Incorporated",
-    "version": (0, 1, 0),
+    "version": (1, 3, 2),
     "blender": (4, 0, 0),
     "location": "View3D > Sidebar > Layouts & Systems Toolkit",
     "description": "A comprehensive toolkit for native, non-destructive URDF creation and rigging for ROS/Gazebo.",
@@ -20,6 +20,16 @@ bl_info = {
     "tracker_url": "https://github.com/Japzon/Layouts-Systems-Draftsman-Toolkit-Addon/issues",
 }
 
+# Project Task: Robust Registration System (Project Task 1.1.2)
+# Handles module reloading to prevent 'ghost' notifications in Preferences.
+if "bpy" in locals():
+    import importlib
+    if "core" in locals(): importlib.reload(core)
+    if "properties" in locals(): importlib.reload(properties)
+    if "operators" in locals(): importlib.reload(operators)
+    if "panels" in locals(): importlib.reload(panels)
+    if "config" in locals(): importlib.reload(config)
+
 import bpy
 from . import config
 from . import core
@@ -27,40 +37,37 @@ from . import properties
 from . import operators
 from . import panels
 
-# Helper to register all classes in a module
-def register_module_classes(module):
-    if hasattr(module, "register"):
-        module.register()
-
-def unregister_module_classes(module):
-    if hasattr(module, "unregister"):
-        module.unregister()
-
 def register():
-    # Register Core (Handlers)
-    core.register()
-    
-    # Register Operators FIRST to ensure callbacks have access to them
-    operators.register()
-    
-    # Register Properties
+    # 0. Hard Registry Cleanup - Clears the persistent 'Missing Add-ons' warning
+    try:
+        legacy_ids = ["fabrication_construction_draftsman_tools", "fabrication_construction_draftman_tools", "Fabrication_Construction_Draftsman_Tools_Blender_Addon"]
+        addon_prefs = bpy.context.preferences.addons
+        for old_id in legacy_ids:
+            if old_id in addon_prefs: # Standard ID check
+                 try: addon_prefs.remove(addon_prefs[old_id])
+                 except: pass # Fallback
+                 print(f"[LSD] Registry Purge: Cleared ghost '{old_id}'.")
+    except:
+        pass
+
+    # 1. Properties - Scene attributes must exist before operators/panels call them
     properties.register()
     
-    # Register Panels
+    # 2. Operators - Register commands
+    operators.register()
+    
+    # 3. Core - Handlers and logic
+    core.register()
+    
+    # 4. Panels - UI
     panels.register()
 
 def unregister():
-    # Unregister Panels
+    # Unregister in reverse order
     panels.unregister()
-    
-    # Unregister Operators
-    operators.unregister()
-    
-    # Unregister Properties
-    properties.unregister()
-    
-    # Unregister Core
     core.unregister()
+    operators.unregister()
+    properties.unregister()
 
 if __name__ == "__main__":
     register()

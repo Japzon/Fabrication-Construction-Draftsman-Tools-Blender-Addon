@@ -3129,7 +3129,7 @@ class LSD_OT_AddBoolean(bpy.types.Operator):
         self.report({'INFO'}, f"Added {len(selected)} boolean modifier(s) to '{active.name}'.")
         return {'FINISHED'}
 
-def create_hook_anchor(context, mesh_obj, vert_indices, name_prefix="Hook", display_size=0.05, display_type='SINGLE_ARROW'):
+def create_hook_anchor(context, mesh_obj, vert_indices, name_prefix="Hook", display_size=0.05, display_type='SINGLE_ARROW', force_location=None):
 
     """
     Creates a Parametric Hook anchor at the world-space center of the provided vertex indices.
@@ -3148,13 +3148,19 @@ def create_hook_anchor(context, mesh_obj, vert_indices, name_prefix="Hook", disp
 
     
 
-    world_center = sum(coords, mathutils.Vector()) / len(coords)
-
-    
+    # Determination of Target Placed Location (Project Task 1.1.2)
+    if force_location is not None:
+        final_location = force_location
+    else:
+        world_center = sum(coords, mathutils.Vector()) / len(coords)
+        final_location = world_center
+        # If 3D Cursor is chosen, use it for the Anchor visual position, while keeping the modifier center stable.
+        if context.scene.lsd_anchor_placement_source == 'CURSOR':
+             final_location = context.scene.cursor.location
 
     # 1. Create Empty
     empty = bpy.data.objects.new(f"{name_prefix}_{mesh_obj.name}", None)
-    empty.location = world_center
+    empty.location = final_location
     empty.empty_display_type = display_type
     empty.empty_display_size = display_size
     empty["lsd_anchor"] = True
@@ -3171,21 +3177,19 @@ def create_hook_anchor(context, mesh_obj, vert_indices, name_prefix="Hook", disp
 
     # 3. Setup Modifier
     mod = mesh_obj.modifiers.new(name="HookAnchor", type='HOOK')
+    mod.show_viewport = False # ATOMIC GUARD: Prevents initial jump on binding
     mod.object = empty
     mod.vertex_group = vg_name
-
     
-
-    # Ensure matrix data is fresh after location set
+    # Ensure matrix data is absolute after location set and linking
     context.view_layer.update()
-
-    
+    # ZERO-WARP: Force evaluate to ensure world matrices are absolute before inverse calculation
+    context.evaluated_depsgraph_get().update()
 
     # 4. Neutralize Binding (Prevent Warping)
-    # The correct inverse matrix for a hook is the relative transform from mesh to empty.
+    # Correct inverse matrix for a hook is the relative transform from mesh to empty.
     mod.matrix_inverse = empty.matrix_world.inverted() @ mesh_obj.matrix_world
-
-    
+    mod.show_viewport = True # RE-ENABLE: Zero-warp is now baked
 
     return empty
 
@@ -3267,23 +3271,92 @@ class LSD_OT_AddParametricAnchor(bpy.types.Operator):
                 bpy.ops.object.mode_set(mode='OBJECT')
 
             # --- Generation & Assignment Phase ---
-            # Using the helper function for consolidated, non-warping logic
-            empty = None
-            for target, indices in all_indices.items():
+            # --- Generation & Assignment Phase ---
+            # Determination of Target Placed Location (Project Task 1.1.2)
+            import mathutils
+            
+            group_mode = scene.lsd_anchor_grouping_mode
+            
+            # --- PATH A: Grouped Anchor ---
+            if group_mode == 'GROUP':
+                # 1. Shared World Position
+                if scene.lsd_anchor_placement_source == 'CURSOR':
+                    shared_location = mathutils.Vector(scene.cursor.location)
+                else:
+                    all_coords = []
+                    for target, indices in all_indices.items():
+                        mw = target.matrix_world
+                        all_coords.extend([mw @ target.data.vertices[i].co.copy() for i in indices])
+                    shared_location = sum(all_coords, mathutils.Vector()) / len(all_coords) if all_coords else mathutils.Vector()
 
-                # Precision Sizing Logic (Project Task 1.1.2)
+                # 2. Precision Sizing
+                ref_objs = list(all_indices.keys())
+                ref_obj = initial_active if (initial_active and initial_active in ref_objs) else ref_objs[0]
                 if scene.lsd_anchor_auto_size:
-                    # Use target dimensions as heuristic (absolute world-space average)
-                    dims = target.dimensions
+                    dims = ref_obj.dimensions
                     avg_dim = (dims.x + dims.y + dims.z) / 3.0
-                    # Guard against non-uniform or zero-sized objects
                     if avg_dim < 0.001: avg_dim = 0.1
-                    final_display_size = avg_dim * 0.2 # 20% of average dimension
+                    final_display_size = avg_dim * 0.2
                 else:
                     final_display_size = scene.lsd_anchor_initial_size
-                
-                res = create_hook_anchor(context, target, indices, display_size=final_display_size)
-                if not empty: empty = res # Track the first for status reporting
+
+                # 3. Create SINGLE Empty
+                empty = bpy.data.objects.new(f"HookGroup_{ref_obj.name}", None)
+                empty.location = shared_location
+                empty.empty_display_type = 'SINGLE_ARROW'
+                empty.empty_display_size = final_display_size
+                empty["lsd_anchor"] = True
+                context.scene.collection.objects.link(empty)
+
+                # 4. Bind ALL
+                for target, indices in all_indices.items():
+                    vg_name = f"VG_{empty.name}"
+                    vg = target.vertex_groups.new(name=vg_name)
+                    vg.add(indices, 1.0, 'REPLACE')
+                    mod = target.modifiers.new(name="HookAnchor", type='HOOK')
+                    mod.object = empty
+                    mod.vertex_group = vg_name
+                    # ZERO-WARP: Core Fix. Explicitly set matrix_inverse for total stability in 4.x.
+                    context.view_layer.update()
+                    mod.matrix_inverse = empty.matrix_world.inverted() @ target.matrix_world
+            
+            # --- PATH B: Individual Anchors ---
+            else:
+                created_count = 0
+                for target, indices in all_indices.items():
+                    # 1. Location
+                    if scene.lsd_anchor_placement_source == 'CURSOR':
+                         loc = mathutils.Vector(scene.cursor.location)
+                    else:
+                         mw = target.matrix_world
+                         loc = sum([mw @ target.data.vertices[i].co.copy() for i in indices], mathutils.Vector()) / len(indices)
+
+
+                    # 2. Size
+                    if scene.lsd_anchor_auto_size:
+                        avg_dim = (target.dimensions.x + target.dimensions.y + target.dimensions.z) / 3.0
+                        if avg_dim < 0.001: avg_dim = 0.1
+                        fs = avg_dim * 0.2
+                    else:
+                        fs = scene.lsd_anchor_initial_size
+
+                    # 3. Create
+                    empty = bpy.data.objects.new(f"Hook_{target.name}", None)
+                    empty.location = loc
+                    empty.empty_display_type = 'SINGLE_ARROW'
+                    empty.empty_display_size = fs
+                    empty["lsd_anchor"] = True
+                    context.scene.collection.objects.link(empty)
+
+                    # 4. Bind
+                    vg_name = f"VG_{empty.name}"
+                    vg = target.vertex_groups.new(name=vg_name)
+                    vg.add(indices, 1.0, 'REPLACE')
+                    mod = target.modifiers.new(name="HookAnchor", type='HOOK')
+                    mod.object = empty
+                    mod.vertex_group = vg_name
+                    context.view_layer.update()
+                    mod.matrix_inverse = empty.matrix_world.inverted() @ target.matrix_world
 
             
 
@@ -3365,8 +3438,14 @@ class LSD_OT_AddMarker(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
     @classmethod
     def poll(cls, context: bpy.types.Context) -> bool:
+        obj = context.active_object
+        if not obj: return False
+        # Allow Mesh OR an existing LSD anchor/hook
+        if obj.type == 'MESH': return True
+        if obj.type == 'EMPTY' and (obj.get("lsd_anchor") or obj.get("lsd_is_dimension_hook")):
+            return True
+        return False
 
-        return context.active_object and context.active_object.type == 'MESH'
 
     def execute(self, context: bpy.types.Context) -> Set[str]:
 
@@ -3377,79 +3456,68 @@ class LSD_OT_AddMarker(bpy.types.Operator):
 
         
 
-        if not obj or obj.type != 'MESH':
-
-            self.report({'WARNING'}, "Requires an active Mesh object.")
+        if not obj:
+            self.report({'WARNING'}, "Requires an active Mesh or Anchor object.")
             return {'CANCELLED'}
+
 
         active_name = obj.name
 
         
 
         try:
+            # Target Resolution (Mesh or LSD Anchor)
+            targets = []
+            for o in context.selected_objects:
+                if o.type == 'MESH': targets.append(o)
+                elif o.type == 'EMPTY' and (o.get("lsd_anchor") or o.get("lsd_is_dimension_hook")):
+                    targets.append(o)
 
-            targets = [o for o in context.selected_objects if o.type == 'MESH']
             if not targets:
-
-                if obj and obj.type == 'MESH': targets = [obj]
+                if obj and (obj.type == 'MESH' or obj.type == 'EMPTY'): targets = [obj]
                 else: return {'CANCELLED'}
 
             created_count = 0
             created_empties = []
-
             
-
-            all_indices = {} # Mapping target_name -> list of indices
-
+            all_indices = {} # Mapping target_name -> list of indices (or None for empties)
             
-
-            # --- Collection Phase (EDIT MODE EXCLUSIVE) ---
-            # Capture while in Edit mode before switching for parent assignment
+            # --- Collection Phase ---
             for target in targets:
+                if target.type == 'EMPTY':
+                    # Empties have no vertices, we mark their origin
+                    all_indices[target.name] = None
+                    continue
 
                 if initial_mode.startswith('EDIT'):
-
                     bm = bmesh.from_edit_mesh(target.data)
                     bm.verts.ensure_lookup_table()
                     indices = [v.index for v in bm.verts if v.select]
                     if indices:
-
                         all_indices[target.name] = indices
-
                     bmesh.update_edit_mesh(target.data)
-
                 else:
-
-                    # In Object mode, collect all vertices
                     all_indices[target.name] = [v.index for v in target.data.vertices]
 
-            
-
             if not all_indices:
-
-                self.report({'WARNING'}, "No vertices available/selected.")
+                self.report({'WARNING'}, "No selection available.")
                 return {'CANCELLED'}
 
-                
-
-            # --- Transient Context Transition (USER ESCAPE) ---
-            # Vertex parenting via API is more stable when the host mesh is in Object Mode.
+            # --- Context Switch ---
             if initial_mode != 'OBJECT':
-
                 bpy.ops.object.mode_set(mode='OBJECT')
 
+            group_mode = context.scene.lsd_anchor_grouping_mode
             
-
-            for target_name, indices in all_indices.items():
-                target = bpy.data.objects.get(target_name)
-                if not target: continue
-                # Project Task: Single Marker Implementation
-                # We now generate one marker per selected object origin instead of per-vertex.
-                empty = bpy.data.objects.new(f"Marker_{target.name}", None)
+            if group_mode == 'GROUP':
+                # --- SHARED MARKER PATH ---
+                ref_obj = initial_active if initial_active in targets else targets[0]
+                empty = bpy.data.objects.new(f"MarkerGroup_{ref_obj.name}", None)
                 empty.empty_display_type = 'PLAIN_AXES'
-                # Precision Sizing Logic (Project Task 1.1.2)
+                
+                # Sizing
                 if context.scene.lsd_anchor_auto_size:
-                    dims = target.dimensions
+                    dims = ref_obj.dimensions
                     avg_dim = (dims.x + dims.y + dims.z) / 3.0
                     if avg_dim < 0.001: avg_dim = 0.1
                     empty.empty_display_size = avg_dim * 0.1 
@@ -3457,12 +3525,70 @@ class LSD_OT_AddMarker(bpy.types.Operator):
                     empty.empty_display_size = context.scene.lsd_anchor_initial_size
                 
                 context.scene.collection.objects.link(empty)
-                # Core Binding Logic (Parent to Origin)
-                empty.parent = target
-                empty.location = (0, 0, 0)
+                
+                # Placement
+                if context.scene.lsd_anchor_placement_source == 'CURSOR':
+                    empty.location = context.scene.cursor.location
+                else:
+                    # Shared center for all targets
+                    all_coords = []
+                    for t_name, inds in all_indices.items():
+                        t = bpy.data.objects.get(t_name)
+                        if t:
+                            if t.type == 'MESH' and inds is not None:
+                                all_coords.extend([t.matrix_world @ t.data.vertices[i].co.copy() for i in inds])
+                            else:
+                                all_coords.append(t.matrix_world.translation.copy())
+                    if all_coords:
+                        empty.location = sum(all_coords, mathutils.Vector()) / len(all_coords)
+                    else:
+                        empty.location = (0, 0, 0)
+
                 empty["lsd_anchor"] = True
                 created_empties.append(empty)
-                created_count += 1
+                created_count = 1
+                
+                # --- Parenting logic for grouped marker ---
+                # We now ALWAYS parent markers so they follow their target components.
+                empty.parent = ref_obj
+                empty.matrix_parent_inverse = ref_obj.matrix_world.inverted()
+
+            else:
+                # --- INDIVIDUAL MARKER PATH (LEGACY) ---
+                for target_name, indices in all_indices.items():
+                    target = bpy.data.objects.get(target_name)
+                    if not target: continue
+                    empty = bpy.data.objects.new(f"Marker_{target.name}", None)
+                    empty.empty_display_type = 'PLAIN_AXES'
+                    if context.scene.lsd_anchor_auto_size:
+                        dims = target.dimensions
+                        avg_dim = (dims.x + dims.y + dims.z) / 3.0
+                        if avg_dim < 0.001: avg_dim = 0.1
+                        empty.empty_display_size = avg_dim * 0.1 
+                    else:
+                        empty.empty_display_size = context.scene.lsd_anchor_initial_size
+                    
+                    context.scene.collection.objects.link(empty)
+                    
+                    if context.scene.lsd_anchor_placement_source == 'CURSOR':
+                        empty.location = context.scene.cursor.location
+                    else:
+                        # Handling Mesh Vertex Center vs Empty Origin
+                        if target.type == 'MESH' and indices is not None:
+                            mw = target.matrix_world
+                            loc = sum([mw @ target.data.vertices[i].co.copy() for i in indices], mathutils.Vector()) / len(indices)
+                        else:
+                            # For hook-parents, use their world origin
+                            loc = target.matrix_world.translation.copy()
+                        empty.location = loc
+
+
+                    empty["lsd_anchor"] = True
+                    # --- Always parent individual markers ---
+                    empty.parent = target
+                    empty.matrix_parent_inverse = target.matrix_world.inverted()
+                    created_empties.append(empty)
+                    created_count += 1
 
             
 
@@ -3515,16 +3641,13 @@ class LSD_OT_AddMarker(bpy.types.Operator):
             
 
             self.report({'INFO'}, f"[LSD v1.3.1] Markers Attached. Workspace Restored: {context.mode}")
-
-                            
-
-        return {'FINISHED'}
+            return {'FINISHED'}
 
 class LSD_OT_ToggleHookPlacement(bpy.types.Operator):
 
     """Toggle placement mode for the hook anchor. Move the empty without deforming the mesh, then stop to rebind."""
     bl_idname = "lsd.toggle_hook_placement"
-    bl_label = "Start/Stop Hook/Marker Transform Mode"
+    bl_label = "Start/Stop Anchor Transform Mode"
     bl_options = {'REGISTER', 'UNDO'}
     @classmethod
     def poll(cls, context: bpy.types.Context) -> bool:
@@ -3550,54 +3673,53 @@ class LSD_OT_ToggleHookPlacement(bpy.types.Operator):
             target_meshes = []
             hook_data = []
 
-            
-
             for obj in context.scene.objects:
-
                 if obj.type == 'MESH':
-
+                    # 1. Scan for Hook Modifiers (driving the mesh)
                     for mod in obj.modifiers:
-
                         if mod.type == 'HOOK' and mod.object == empty:
+                            target_meshes.append(('HOOK', obj, mod))
 
-                            target_meshes.append((obj, mod))
-
-            
+                # 2. Scan for Markers (children or vertex-parents) where 'empty' is child of 'obj'
+                if empty.parent == obj:
+                    target_meshes.append(('MARKER', obj, None))
 
             if not target_meshes:
-
-                self.report({'WARNING'}, "No meshes found hooked to this Empty.")
+                self.report({'WARNING'}, "This object is not an anchor for any meshes.")
                 scene.lsd_hook_placement_mode = False
                 return {'CANCELLED'}
 
-            for mesh, mod in target_meshes:
-
-                # Store data to re-create the hook later
-                hook_data.append({
-                    "mesh_name": mesh.name,
-                    "vg_name": mod.vertex_group
-                })
-
-                
-
-                # Apply the modifier to bake the current shape
-                try:
-
-                    with context.temp_override(object=mesh):
-
-                        bpy.ops.object.modifier_apply(modifier=mod.name)
-
-                except Exception as e:
-
-                    self.report({'ERROR'}, f"Failed to apply hook on {mesh.name}: {e}")
+            for mtype, mesh, mod in target_meshes:
+                if mtype == 'HOOK':
+                    # Prep Hook Re-binding
+                    hook_data.append({
+                        "type": "HOOK",
+                        "mesh_name": mesh.name,
+                        "vg_name": mod.vertex_group
+                    })
+                    # Bake Deformation temporarily so anchor moves freely
+                    try:
+                        with context.temp_override(object=mesh):
+                            bpy.ops.object.modifier_apply(modifier=mod.name)
+                    except: pass
+                else:
+                    # Prep Marker Re-parenting
+                    hook_data.append({
+                        "type": "MARKER",
+                        "mesh_name": mesh.name,
+                        "parent_type": empty.parent_type
+                    })
+                    # Disconnect Parenting to allow free coordinate adjustment
+                    mw = empty.matrix_world.copy()
+                    empty.parent = None
+                    empty.matrix_world = mw
 
             
 
             # Store hook data on the empty
             empty["lsd_hook_data"] = hook_data
-            self.report({'INFO'}, "Hook Placement Started. Deformation applied. Move the Empty, then click Stop.")
-
-            
+            self.report({'INFO'}, "Anchor Transform Mode Started. Target links temporarily detached.")
+            return {'FINISHED'}
 
         else:
 
@@ -3620,91 +3742,56 @@ class LSD_OT_ToggleHookPlacement(bpy.types.Operator):
 
             hook_data = empty.get("lsd_hook_data", [])
 
-            
-
             for item in hook_data:
-
                 mesh = bpy.data.objects.get(item["mesh_name"])
                 if not mesh: continue
 
-                
+                if item.get("type") == "MARKER":
+                    # Restore Parenting link
+                    mw = empty.matrix_world.copy()
+                    empty.parent = mesh
+                    empty.parent_type = item.get("parent_type", 'OBJECT')
+                    empty.matrix_world = mw
+                    continue
 
-                vg_name = item["vg_name"]
-
-                
-
-                # Create new Hook modifier
-                mod = mesh.modifiers.new(name="Hook", type='HOOK')
+                # Restore Hook Modifier link
+                vg_name = item.get("vg_name")
+                mod = mesh.modifiers.new(name="Hook_Restored", type='HOOK')
                 mod.object = empty
-                if vg_name:
+                if vg_name: mod.vertex_group = vg_name
 
-                    mod.vertex_group = vg_name
-
+                # Re-synchronize
                 context.view_layer.objects.active = mesh
                 mesh.select_set(True)
-
-                
-
-                # Resetting the hook requires Edit Mode and selecting the bound vertices
                 try:
-
                     bpy.ops.object.mode_set(mode='EDIT')
-                    bpy.ops.mesh.select_all(action='DESELECT')
-
-                    
-
-                    # Select vertices based on VG if available
                     if vg_name and vg_name in mesh.vertex_groups:
-
                         mesh.vertex_groups.active_index = mesh.vertex_groups[vg_name].index
                         bpy.ops.object.vertex_group_select()
-
                     else:
-
-                        # Fallback: Select all if no VG (though AddParametricAnchor creates one)
                         bpy.ops.mesh.select_all(action='SELECT')
-
-                    # Reset the hook (rebinds to current empty position)
+                    
+                    # Reset the hook to new visual position
                     bpy.ops.object.hook_reset(modifier=mod.name)
-
                 except Exception as e:
-
-                    self.report({'WARNING'}, f"Could not reset hook on {mesh.name}: {e}")
-
+                    self.report({'WARNING'}, f"Hook restoration failed on {mesh.name}: {str(e)}")
                 finally:
-
-                    # Always return to Object Mode
                     if context.mode != 'OBJECT':
-
                         bpy.ops.object.mode_set(mode='OBJECT')
-
-                
-
                 mesh.select_set(False)
 
-            
+            # Cleanup and Restore State
+            if "lsd_hook_data" in empty: del empty["lsd_hook_data"]
 
-            # Cleanup
-            if "lsd_hook_data" in empty:
-
-                del empty["lsd_hook_data"]
-
-            # Restore state
+            # Restore original active/selected state
             if original_active and original_active.name in context.scene.objects:
-
                 context.view_layer.objects.active = original_active
-
             for o in original_selected:
-
                 if o.name in context.scene.objects:
-
                     o.select_set(True)
 
-            self.report({'INFO'}, "Hook Placement Stopped. Anchor rebound.")
-
-            
-
-        return {'FINISHED'}
+            self.report({'INFO'}, "Anchor Transform Mode Stopped. All targets re-linked.")
+            return {'FINISHED'}
 
 class LSD_OT_CleanupAnchor(bpy.types.Operator):
 
@@ -4008,6 +4095,8 @@ def setup_dimension_gn(text_obj: bpy.types.Object, obj_a: bpy.types.Object, obj_
         suffix_sock.default_value = "m"
         text_size_sock = iface.new_socket(name="Text Size", in_out="INPUT", socket_type='NodeSocketFloat')
         text_size_sock.default_value = 0.15
+        shear_sock = iface.new_socket(name="Shear", in_out="INPUT", socket_type='NodeSocketFloat')
+        shear_sock.default_value = 0.0
         font_sock = iface.new_socket(name="Font", in_out="INPUT", socket_type='NodeSocketFont')
         iface.new_socket(name="Geometry", in_out="OUTPUT", socket_type='NodeSocketGeometry')
         # --- Nodes ---
@@ -4061,7 +4150,9 @@ def setup_dimension_gn(text_obj: bpy.types.Object, obj_a: bpy.types.Object, obj_
         str_to_curve.location = (600, 0)
         str_to_curve.align_x = 'CENTER'
         str_to_curve.align_y = 'MIDDLE'
+        links.new(g_in.outputs['Font'], str_to_curve.inputs['Font'])
         links.new(g_in.outputs['Text Size'], str_to_curve.inputs['Size'])
+        links.new(g_in.outputs['Shear'], str_to_curve.inputs['Shear'])
         # Fill Curve
         fill = nodes.new('GeometryNodeFillCurve')
         fill.location = (800, 0)
@@ -4253,171 +4344,122 @@ class LSD_OT_AddTextDescription(bpy.types.Operator):
         return {'FINISHED'}
 
 class LSD_OT_Remove_Dimension(bpy.types.Operator):
-
-    """Removes the selected dimension and its associated arrows/anchors"""
+    """Removes all selected dimensions and purges their associated mechatronic hooks."""
     bl_idname = "lsd.remove_dimension"
-    bl_label = "Remove Dimension"
+    bl_label = "Remove Selected Dimensions"
     bl_options = {'REGISTER', 'UNDO'}
+
     @classmethod
     def poll(cls, context):
-
         from . import core
-        obj = context.active_object
-        return core.get_dimension_host(obj) is not None
+        # Check if any selected object is a dimension host
+        for o in context.selected_objects:
+            if core.get_dimension_host(o): return True
+        return core.get_dimension_host(context.active_object) is not None
 
     def execute(self, context):
-
         from . import core
-        host = core.get_dimension_host(context.active_object)
-        if not host:
-
+        
+        # 1. Harvest UNIQUE dimension roots from selection
+        unique_roots = set()
+        for o in context.selected_objects:
+            host = core.get_dimension_host(o)
+            if host:
+                root = host.parent if host.parent else host
+                unique_roots.add(root)
+        
+        if not unique_roots:
+            active_host = core.get_dimension_host(context.active_object)
+            if active_host:
+                unique_roots.add(active_host.parent if active_host.parent else active_host)
+        
+        if not unique_roots:
+            self.report({'WARNING'}, "No selected dimensions found.")
             return {'CANCELLED'}
 
-            
-
-        # Root of the assembly
-        root = host.parent
-        if not root:
-
-             # Fallback if unparented
-             bpy.data.objects.remove(host, do_unlink=True)
-             return {'FINISHED'}
-
-        # AI Editor Note: PRE-DELETION BAKE (Requirement)
-        # Directly apply the current deformation as the rest pose for all driven meshes
-        # before we nuke the anchors and constraints.
-        participants = []
-        if root.get("lsd_parent_obj"): participants.append(root["lsd_parent_obj"])
-        if root.get("lsd_slave_obj"):  participants.append(root["lsd_slave_obj"])
-
+        all_affected_meshes = set()
         
-
-        # Ensure Object Mode for modifier operations
+        # Ensure Object Mode for modifier/deletion operations
         if context.mode != 'OBJECT':
+            bpy.ops.object.mode_set(mode='OBJECT')
 
-             bpy.ops.object.mode_set(mode='OBJECT')
+        removed_count = 0
+        for root in unique_roots:
+            # Safety Check: Object might have been deleted if selected WITH its parent root
+            if not root or root.name not in bpy.data.objects: continue
 
-        for hook_empty in participants:
+            # Identify participants
+            participants = []
+            if root.get("lsd_parent_obj"): participants.append(root["lsd_parent_obj"])
+            if root.get("lsd_slave_obj"):  participants.append(root["lsd_slave_obj"])
 
-            if not (hook_empty and hook_empty.name in bpy.data.objects): continue
+            # --- PHASE 1: BAKE & DETACH ---
+            for hook_empty in participants:
+                if not (hook_empty and hook_empty.name in bpy.data.objects): continue
+                
+                # Find all meshes driven by this hook
+                for scene_obj in bpy.data.objects:
+                    if scene_obj.type != 'MESH': continue
+                    
+                    # If the mesh is driven by our dimension's hook, bake it
+                    for mod in scene_obj.modifiers:
+                        if mod.type == 'HOOK' and mod.object == hook_empty:
+                            all_affected_meshes.add(scene_obj)
+                            try:
+                                context.view_layer.objects.active = scene_obj
+                                scene_obj.select_set(True)
+                                bpy.ops.object.modifier_apply(modifier=mod.name)
+                            except: pass
+                            finally:
+                                scene_obj.select_set(False)
 
-            
+            # --- PHASE 2: PURGE ASSEMBLY ---
+            to_delete = {root}
+            for child in root.children: 
+                if child: to_delete.add(child)
+                for grandchild in child.children:
+                    if grandchild: to_delete.add(grandchild)
 
-            # --- PHASE 1: Bake Hook World Matrix ---
-            # The hook might be constrained to an anchor we are about to delete.
-            # We must lock its current global position.
-            mw = hook_empty.matrix_world.copy()
-            for con in hook_empty.constraints:
-
-                if con.type == 'COPY_LOCATION':
-
-                    hook_empty.constraints.remove(con)
-
-            hook_empty.matrix_world = mw
-
-            
-
-            # --- PHASE 2: Bake Mesh Geometry ---
-            # Find all meshes driven by this hook
-            for scene_obj in bpy.data.objects:
-
-                if scene_obj.type != 'MESH': continue
-                for mod in scene_obj.modifiers:
-
-                    if mod.type == 'HOOK' and mod.object == hook_empty:
-
-                        # Logic from LSD_OT_BakeAnchor: Apply → Re-create → Reset
-                        mod_data = {
-                            'name': mod.name,
-                            'vertex_group': mod.vertex_group,
-                            'strength': mod.strength,
-                            'falloff_type': mod.falloff_type,
-                            'falloff_radius': mod.falloff_radius,
-                            'uniform': mod.use_falloff_uniform,
-                        }
-
-                        
-
-                        try:
-
-                            # 1. SETUP CONTEXT: Must be active and selected for apply
-                            context.view_layer.objects.active = scene_obj
-                            scene_obj.select_set(True)
-
-                            
-
-                            # 2. APPLY: Locks in current pose
-                            bpy.ops.object.modifier_apply(modifier=mod.name)
-
-                            
-
-                            # 3. RE-BIND: Re-create the hook to maintain parametric control over NEW rest pose
-                            new_mod = scene_obj.modifiers.new(name=mod_data['name'], type='HOOK')
-                            new_mod.object = hook_empty
-                            if mod_data['vertex_group']: new_mod.vertex_group = mod_data['vertex_group']
-                            new_mod.strength = mod_data['strength']
-                            new_mod.falloff_type = mod_data['falloff_type']
-                            new_mod.falloff_radius = mod_data['falloff_radius']
-                            new_mod.use_falloff_uniform = mod_data['uniform']
-
-                            
-
-                            # Rebind to current world state (Edit Mode Reset)
-                            bpy.ops.object.mode_set(mode='EDIT')
-                            bpy.ops.mesh.select_all(action='SELECT')
-                            bpy.ops.object.hook_reset(modifier=new_mod.name)
-                            bpy.ops.object.mode_set(mode='OBJECT')
-
-                            
-
-                        except Exception as e:
-
-                            print(f"[LSD] Pre-removal bake failed on {scene_obj.name}: {e}")
-
-                        finally:
-
-                            # Cleanup selection for next mesh
-                            scene_obj.select_set(False)
-
-        # Collect all components (children of the same root)
-        to_delete = {root}
-        for child in root.children:
-
-            if child: to_delete.add(child)
-
-        # AI Editor Note: SAFETY CHECK. 
-        # If any of these dimension parts are parents to other objects (Hooks), 
-        # we must unparent the victims with 'KEEP_TRANSFORM' before deletion.
-        all_objs = list(bpy.data.objects)
-        for parent_obj in to_delete:
-
-            if not parent_obj: continue
-            for victim in all_objs:
-
-                try: 
-
-                    if victim and victim.parent == parent_obj:
-
+            # Unparent orphans with Keep Transform
+            for p_obj in to_delete:
+                if not p_obj or p_obj.name not in bpy.data.objects: continue
+                for victim in bpy.data.objects:
+                    if victim and victim.parent == p_obj:
                         mw = victim.matrix_world.copy()
                         victim.parent = None
                         victim.matrix_world = mw
 
-                except: continue
+            for obj in list(to_delete):
+                if obj and obj.name in bpy.data.objects:
+                    data = obj.data
+                    bpy.data.objects.remove(obj, do_unlink=True)
+                    if data and data.users == 0:
+                        try:
+                            if isinstance(data, bpy.types.Mesh): bpy.data.meshes.remove(data)
+                            elif isinstance(data, bpy.types.Curve): bpy.data.curves.remove(data)
+                        except: pass
+            
+            removed_count += 1
 
-        # Systematic deletion to avoid orphans
-        for obj in to_delete:
+        # --- PHASE 3: FINAL ANCHOR CLEANUP ---
+        if all_affected_meshes:
+            original_sel = context.selected_objects
+            original_act = context.view_layer.objects.active
+            
+            bpy.ops.object.select_all(action='DESELECT')
+            for m in all_affected_meshes: 
+                if m.name in bpy.data.objects: m.select_set(True)
+            
+            # Trigger the universal cleanup operator on these meshes
+            bpy.ops.lsd.cleanup_anchor()
+            
+            # Restore selection (minus what was deleted)
+            for o in original_sel:
+                if o and o.name in bpy.data.objects: o.select_set(True)
+            if original_act and original_act.name in bpy.data.objects:
+                context.view_layer.objects.active = original_act
 
-            if obj and obj.name in bpy.data.objects:
-
-                data = obj.data
-                bpy.data.objects.remove(obj, do_unlink=True)
-                if data and data.users == 0:
-
-                    if isinstance(data, bpy.types.Mesh):
-
-                        bpy.data.meshes.remove(data)
-
-        self.report({'INFO'}, "Dimension assembly removed.")
+        self.report({'INFO'}, f"Purged {removed_count} Dimension(s) and associated mechatronic links.")
         return {'FINISHED'}
 
 class LSD_OT_Add_Dimension(bpy.types.Operator):
@@ -4536,7 +4578,7 @@ class LSD_OT_Add_Dimension(bpy.types.Operator):
                 hook_empties = []
                 for mesh_obj, vert_indices, world_point in anchor_spec:
 
-                    empty = create_hook_anchor(context, mesh_obj, vert_indices, name_prefix="Hook_Dim", display_type='CUBE')
+                    empty = create_hook_anchor(context, mesh_obj, vert_indices, name_prefix="Hook_Dim", display_type='CUBE', force_location=world_point)
                     if empty:
 
                         hook_empties.append((empty, world_point))
@@ -4630,32 +4672,32 @@ class LSD_OT_Add_Dimension(bpy.types.Operator):
                 
 
                 # --- Attachment Phase (Stable Anchor Identification or Generation) ---
-                # Strategy: If the object is ALREADY a hook, use it. Otherwise, generate one.
+                # Strategy: If the object is ALREADY a hook, use it. 
+                # If the object is a MESH, search for existing LSD hook modifiers to reuse.
+                # Otherwise, generate a fresh hook anchor.
                 h1, h2 = None, None
 
-                
+                def resolve_anchor(obj, measured_p):
+                    # 1. Direct pass-through if the object is already a hook/anchor
+                    if obj.get("lsd_anchor") or obj.get("lsd_is_dimension_hook"):
+                        return obj
+                    
+                    # 2. Search for existing LSD-controlled hook modifier on mesh objects
+                    if obj.type == 'MESH':
+                        for mod in obj.modifiers:
+                            if mod.type == 'HOOK' and mod.object:
+                                target_o = mod.object
+                                if target_o.get("lsd_anchor") or target_o.get("lsd_is_dimension_hook"):
+                                    # Re-use existing stable anchor
+                                    return target_o
+                        
+                        # 3. Fallback: Create a fresh hook anchor at the measured position
+                        return create_hook_anchor(context, obj, [v.index for v in obj.data.vertices], 
+                                                 name_prefix="Hook_Dim_Obj", force_location=measured_p)
+                    return None
 
-                # Identify Target 1 (Start)
-                if o1.get("lsd_anchor") or o1.get("lsd_is_dimension_hook"):
-
-                    h1 = o1
-
-                elif o1.type == 'MESH':
-
-                    h1 = create_hook_anchor(context, o1, [v.index for v in o1.data.vertices], name_prefix="Hook_Dim_Obj")
-
-                
-
-                # Identify Target 2 (End)
-                if o2.get("lsd_anchor") or o2.get("lsd_is_dimension_hook"):
-
-                    h2 = o2
-
-                elif o2.type == 'MESH':
-
-                    h2 = create_hook_anchor(context, o2, [v.index for v in o2.data.vertices], name_prefix="Hook_Dim_Obj")
-
-                
+                h1 = resolve_anchor(o1, p1_v)
+                h2 = resolve_anchor(o2, p2_v)
 
                 if h1 and h2:
 
@@ -9077,24 +9119,47 @@ class LSD_OT_Dimension_AutoScale(bpy.types.Operator):
 
         
 
-        # Calculate standard drafting ratios
-        # PROPORTIONAL AUTO-SIZING (Synchronized with generators.py)
-        dim_props.arrow_scale = length * 0.2
-        dim_props.text_scale = length * 0.1
-        dim_props.line_thickness = length * 0.004
-        dim_props.text_offset = length * 0.06
-        dim_props.offset = length * 0.15
-
-        
+        scene = context.scene
+        dim_props.arrow_scale = length * scene.lsd_dim_ratio_arrow
+        dim_props.text_scale = length * scene.lsd_dim_ratio_text
+        dim_props.line_thickness = length * scene.lsd_dim_ratio_thick
+        dim_props.text_offset = length * scene.lsd_dim_ratio_text_off
+        dim_props.offset = length * scene.lsd_dim_ratio_offset
 
         # Ensure minimum visibility guards
         if dim_props.arrow_scale < 0.001: dim_props.arrow_scale = 0.001
         if dim_props.text_scale < 0.001: dim_props.text_scale = 0.001
-
-        
-
         core.update_arrow_settings(host)
-        self.report({'INFO'}, f"Auto-scaled dimension to {length:.3f}m standard")
+        return {'FINISHED'}
+
+class LSD_OT_Register_Default_Proportions(bpy.types.Operator):
+    """Saves the current dimension's ratios as the new session defaults."""
+    bl_idname = "lsd.register_default_proportions"
+    bl_label = "Register Custom Proportions"
+    bl_description = "Saves the current proportions as the new baseline for Auto-Size"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        from . import core
+        return core.get_dimension_host(context.active_object) is not None
+
+    def execute(self, context):
+        from . import core
+        scene = context.scene
+        host = core.get_dimension_host(context.active_object)
+        dim_props = host.lsd_pg_dim_props
+        length = dim_props.length
+        if length < 0.0001: return {'CANCELLED'}
+
+        # Calculate and Save Ratios
+        scene.lsd_dim_ratio_arrow = dim_props.arrow_scale / length
+        scene.lsd_dim_ratio_text = dim_props.text_scale / length
+        scene.lsd_dim_ratio_thick = dim_props.line_thickness / length
+        scene.lsd_dim_ratio_text_off = dim_props.text_offset / length
+        scene.lsd_dim_ratio_offset = dim_props.offset / length
+
+        self.report({'INFO'}, "Registered custom drafting proportions as defaults")
         return {'FINISHED'}
 
 def register():
@@ -9111,6 +9176,7 @@ def register():
         LSD_OT_ExportGazeboWorld, LSD_OT_LinkChainDriver, LSD_OT_AddBoolean, LSD_OT_AddParametricAnchor, 
         LSD_OT_AddMarker, LSD_OT_ToggleHookPlacement, LSD_OT_CleanupAnchor, LSD_OT_BakeAnchor, 
         LSD_OT_AddTextDescription, LSD_OT_Remove_Dimension, LSD_OT_Add_Dimension, LSD_OT_AddModifier, 
+        LSD_OT_Dimension_AutoScale, LSD_OT_Register_Default_Proportions,
         LSD_OT_AddSimplify, LSD_OT_SetupLinearArray, LSD_OT_SetupRadialArray, LSD_OT_CreateCurveForPath, 
         LSD_OT_SetupCurveArray, LSD_OT_SmartSmooth, LSD_OT_CreatePart, LSD_OT_ChainAddWrapObject, 
         LSD_OT_CreateElectronicPart, LSD_OT_ChainAddPickedWrapObject, LSD_OT_ChainRemoveWrapObject, 

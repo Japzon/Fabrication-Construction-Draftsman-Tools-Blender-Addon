@@ -668,6 +668,10 @@ def get_font_data(font_name: str, is_bold: bool = False, is_italic: bool = False
         'STYLUS':       ('Stylus BT.ttf', 'StylusBT.ttf', 'Stylus.ttf'),
         'ARCH_DAUGHTER': ('ArchitectsDaughter.ttf', 'architects_daughter.ttf'),
         'POPPINS':      ('Poppins-Regular.ttf', 'Poppins-Bold.ttf', 'Poppins-Italic.ttf'),
+        'TAHOMA':       ('tahoma.ttf', 'tahomabd.ttf'),
+        'VERDANA':      ('verdana.ttf', 'verdanab.ttf', 'verdanai.ttf', 'verdanaz.ttf'),
+        'SEGOE':        ('segoeui.ttf', 'seguib.ttf', 'seguii.ttf', 'seguiz.ttf'),
+        'TREBUCHET':    ('trebuc.ttf', 'trebucbd.ttf', 'trebucit.ttf', 'trebucbi.ttf'),
         'QUICKSAND':    ('Quicksand-Regular.ttf', 'Quicksand-Bold.ttf', 'Quicksand-Light.ttf'),
         'BAUHAUS':      ('bauhaus.ttf', 'BAUHS93.TTF', 'Bauhaus.ttf'),
         'SPACE':        ('SpaceGrotesk-Regular.ttf', 'SpaceGrotesk-Bold.ttf'),
@@ -1243,7 +1247,13 @@ def get_or_create_text_material(target_obj):
 
     # AI Editor Note: Access properties through the LSD_PG_Dimension_Props namespaced PG
     dim_props = getattr(target_obj, "lsd_pg_dim_props", None)
-    color = dim_props.text_color if dim_props else (0.0, 0.0, 0.0, 1.0)
+    
+    # 1.1.3 Global Color Sync Logic
+    scene = bpy.context.scene
+    if scene.lsd_dim_global_text_color_sync:
+         color = scene.lsd_dim_universal_text_color
+    else:
+         color = dim_props.text_color if dim_props else (0.0, 0.0, 0.0, 1.0)
 
     
 
@@ -1253,8 +1263,8 @@ def get_or_create_text_material(target_obj):
         if bsdf:
 
             # AI Editor Note: High-Legibility Draftsman Display
-            # Use pure black by default, maximum roughness and zero metallic for non-glossy appearance.
-            bsdf.inputs['Base Color'].default_value = color
+            # Use slice assignment to ensure full RGBA data is passed to the BSDF.
+            bsdf.inputs['Base Color'].default_value[:] = color[:]
             bsdf.inputs['Metallic'].default_value = 0.0
             bsdf.inputs['Roughness'].default_value = 1.0
 
@@ -1716,25 +1726,31 @@ def update_arrow_settings(obj):
             if child.scale.z < 0.001: child.scale.z = 0.001
 
         elif child.get("lsd_is_dimension"): # The Label
-
-            child.scale = (safe_divide(text_s, rw_scale.x), safe_divide(text_s, rw_scale.y), safe_divide(text_s, rw_scale.z))
+            # OPTIC COMPENSATION: Bold fonts often feel 'smaller' or compressed. 
+            # Apply a 1.15x scale factor when Bold is active to ensure visual parity.
+            ts_mod = 1.15 if dim_props.font_bold else 1.0
+            child.scale = (
+                safe_divide(text_s * ts_mod, rw_scale.x), 
+                safe_divide(text_s * ts_mod, rw_scale.y), 
+                safe_divide(text_s * ts_mod, rw_scale.z)
+            )
             # Clearance from drafting line
             text_clearance = move_vec.normalized() * (dim_props.text_offset * us)
             # Reusable Font Assignment
             f_data = get_font_data(dim_props.font_name, dim_props.font_bold, dim_props.font_italic)
             if f_data:
                  child.data.font = f_data
-                 # Simulation Fallback if the variant file isn't found/loaded
-                 # Check if the returned font's name actually contains 'bold' or 'italic'
                  f_path_low = f_data.filepath.lower()
-                 if dim_props.font_italic and not any(p in f_path_low for p in ['it', 'ital', 'oblique', 'z']):
-                      child.data.shear = 0.2
-                 else:
-                      child.data.shear = 0.0
-                      
-                 # REMOVED Offset simulation as it breaks Fill Curve GN nodes
+                 # Functional Italic fix
+                 v_shear = 0.2 if dim_props.font_italic and not any(p in f_path_low for p in ['it', 'ital', 'oblique', 'z']) else 0.0
+                 if hasattr(child.data, "shear"): child.data.shear = v_shear
+                 for mod in child.modifiers:
+                     if mod.type == 'NODES' and mod.node_group:
+                         for inp in mod.node_group.inputs:
+                             if inp.name == "Shear":
+                                 mod[inp.identifier] = v_shear
+                                 break
                  child.data.offset = 0.0
-                 
                  if hasattr(child.data, "update_tag"): child.data.update_tag()
             
             # (Deleted old inline font block)
