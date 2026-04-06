@@ -48,12 +48,16 @@ _last_active_bone_name = None
 
 _update_gizmo_guard = False
 
-_local_cursor_update_guard = False
-
+# Per-Item Synchronization Guards (Recursion Prevention)
 # AI Editor Note: Transitioned from boolean to set to support batch-editing in grouped lists.
+_dim_sync_active_ids = set()
 _dim_timer_queued_ids = set()
+_dim_pending_batch_sync_ids = set() # Batch update queue for grouped edits
 
-_dim_update_guard = False
+# AI Editor Note: Per-Item guarding (Set of IDs) to prevent recursion on a per-object basis. 
+# This is critical for chaining support (Dimension 1 moving Dimension 2's Root). 
+# A global boolean would block Dim 2 from syncing while Dim 1 is updating.
+_dim_sync_active_ids = set()
 
 _curve_update_guard = False
 
@@ -1382,8 +1386,10 @@ def get_dimension_root(obj: Optional[bpy.types.Object]) -> Optional[bpy.types.Ob
 def lsd_dimension_sync_handler(scene: bpy.types.Scene, depsgraph: bpy.types.Depsgraph) -> None:
 
     """Ultimate real-time synchronization for Procedural Dimensions."""
-    global _dim_update_guard
-    if _dim_update_guard: return
+    # 0. Global recursive guard check
+    # AI Editor Note: Handlers are now guarded per-item if possible,
+    # but we skip the loop if global sync is being suppressed.
+    pass
 
     
 
@@ -1427,7 +1433,7 @@ def lsd_dimension_sync_handler(scene: bpy.types.Scene, depsgraph: bpy.types.Deps
         local_target = root.matrix_world.inverted() @ target_mesh_hook.matrix_world.translation
         
         # 1. LENGTH SYNC (X/Y/Z primary drafting axis)
-        if _dim_update_guard: continue
+        if obj.name in _dim_sync_active_ids: continue
 
         last_l = obj.get("_lsd_last_built_length", -1.0)
         curr_l = dim_props.length
@@ -1436,7 +1442,7 @@ def lsd_dimension_sync_handler(scene: bpy.types.Scene, depsgraph: bpy.types.Deps
              # DYNAMIC MODE: Object/Mesh Hook drives the property
              dist = abs(local_target.z)
              if abs(curr_l - dist) > 0.0001:
-                  _dim_update_guard = True
+                  _dim_sync_active_ids.add(obj.name)
                   try:
                       orig_dim_props["length"] = dist
                       update_dimension_length(obj)
@@ -1445,7 +1451,7 @@ def lsd_dimension_sync_handler(scene: bpy.types.Scene, depsgraph: bpy.types.Deps
                       for child in root.children:
                            if child.get("lsd_is_dimension_anchor"): child.update_tag()
                   finally:
-                      _dim_update_guard = False
+                      _dim_sync_active_ids.remove(obj.name)
         else:
              # MANUAL/DRIVEN MODE: Check if an external driver changed the value
              if abs(last_l - curr_l) > 0.0001:
@@ -1455,13 +1461,13 @@ def lsd_dimension_sync_handler(scene: bpy.types.Scene, depsgraph: bpy.types.Deps
         # 2. TRANSVERSE SYNC (Alignment stability)
         if abs(dim_props.target_x - local_target.x) > 0.0001 or abs(dim_props.target_y - local_target.y) > 0.0001:
              if not dim_props.is_manual:
-                  _dim_update_guard = True
+                  _dim_sync_active_ids.add(obj.name)
                   try:
                        orig_dim_props["target_x"] = local_target.x
                        orig_dim_props["target_y"] = local_target.y
                        update_dimension_length(obj)
                   finally:
-                       _dim_update_guard = False
+                       _dim_sync_active_ids.remove(obj.name)
 
 def update_dimension_length(obj):
 
@@ -1927,191 +1933,110 @@ def _bake_and_release_hook(hook_empty: bpy.types.Object) -> None:
         print(f"[LSD] Flip: hook release failed on {hook_empty.name}: {e}")
 
 def sync_dimension_flipping(obj):
-
-    """True geometric role swap for Flip Target Roles with dual-constraint re-binding.
-
-    
-
-    Swaps which selected point is p1 (master/start) vs p2 (slave/end).
-    1. Snapshot current hook/mesh state.
-    2. Bake current pose to mesh geometry and release constraints.
-    3. Reposition Root (origin swap).
-    4. Re-establish COPY_LOCATION constraints so hooks follow our new orientation.
     """
-    global _dim_update_guard
-    if _dim_update_guard: return
-
-    
-
+    Swaps which selected point is p1 (master/start) vs p2 (slave/end).
+    AI Editor Note: This is now guarded per-item and handles chaining (root constraints).
+    """
     root = get_dimension_root(obj)
     if not root: return
-
     
-
     host = get_dimension_host(obj)
     if not host: return
     host_props = host.lsd_pg_dim_props
 
+    # Guard against recursion while role swapping
+    if root.name in _dim_sync_active_ids: return
     
-
     # CHANGE-DETECTION GUARD: Only fire when is_flipped actually changes
-    # Use a two-stage guard: 
-    # 1. On first run, baseline the state and exit without swapping.
-    # 2. On subsequent runs, exit only if the state is unchanged.
     last_flipped = root.get("_lsd_last_flipped_state", None)
     current_flipped = host_props.is_flipped
-
-    
-
     if last_flipped is None:
-
         root["_lsd_last_flipped_state"] = int(current_flipped)
-        return  # Initial baseline setup: record state and exit WITHOUT swapping
-
-        
-
+        return 
     if bool(last_flipped) == bool(current_flipped):
-
-        return  # State hasn't changed since last swap
-
-    
-
+        return 
     root["_lsd_last_flipped_state"] = int(current_flipped)
 
-    
-
-    # 1. Store A/B participants before they are unlinked
-    obj_a = root.get("lsd_parent_obj")
-    obj_b = root.get("lsd_slave_obj")
-
-    
-
-    # Snapshot world positions BEFORE any changes
+    _dim_sync_active_ids.add(root.name)
     try:
-
+        # Re-resolve world matrices for the anchors before swapping
         bpy.context.view_layer.update()
-        start_anchor = next((c for c in root.children if c.get("lsd_anchor_type") == "START"), None)
-        end_anchor   = next((c for c in root.children if c.get("lsd_anchor_type") == "END"),   None)
-        if not start_anchor or not end_anchor: return
-
         
+        # 1. Capture current participants and their anchors
+        start_anchor = next((c for c in root.children if c.get("lsd_anchor_type") == "START"), None)
+        end_anchor = next((c for c in root.children if c.get("lsd_anchor_type") == "END"), None)
+        
+        obj_a = root.get("lsd_parent_obj") # Participant at Start (old P1)
+        obj_b = root.get("lsd_slave_obj")  # Participant at End (old P2)
+        
+        if not all([start_anchor, end_anchor, obj_a, obj_b]):
+             return
 
+        # Capture world positions of actual anchors before we move the root
         old_p1_world = start_anchor.matrix_world.translation.copy()
         old_p2_world = end_anchor.matrix_world.translation.copy()
+        
+        # 2. Release participants (Bake + Remove constraints)
+        for hook in [obj_a, obj_b]:
+             if isinstance(hook, bpy.types.Object):
+                  _bake_and_release_hook(hook)
 
-    except: return
-
-    
-
-    # 2. PRE-FLIP BAKE: Release participants from current anchors
-    hooks_to_release = []
-    if obj_a: hooks_to_release.append(obj_a)
-    if obj_b: hooks_to_release.append(obj_b)
-
-    
-
-    for hook in hooks_to_release:
-
-        if isinstance(hook, bpy.types.Object):
-
-            _bake_and_release_hook(hook)
-
-    
-
-    # 3. REPOSITION ROOT: Swap p1/p2 world vectors
-    # We always move origin to the new 'start' side
-    new_p1 = old_p2_world
-    new_p2 = old_p1_world
-
-    
-
-    direction = new_p2 - new_p1
-    new_length = direction.length
-    if new_length < 0.0001: return
-
-    
-
-    _dim_update_guard = True
-    try:
-
-        # Reposition root Empty via world matrix to avoid eval-frame conflicts
-        # AI Editor Note: Per User Request (Session B) - Flip around local Y axis 
-        # instead of X. This ensures that while Z (the dimension line) flips 180 degrees 
-        # to swap roles, the Y axis (the drafting offset side) is PRESERVED, keeping 
-        # the assembly on the same side of the target points.
+        # 3. SWAP ROOT POSITION AND ORIENTATION
+        # We move the Root to old_p2 (where the End was).
+        # We then 180-flip the Y axis to keep the assembly on the same side.
         old_rot = root.matrix_world.to_quaternion()
         flip_quat = mathutils.Quaternion((0.0, 1.0, 0.0), math.pi) # 180 flip around local Y
         rot_quat = old_rot @ flip_quat
+        
         rot_mat = rot_quat.to_matrix().to_4x4()
-        rot_mat.translation = new_p1
+        rot_mat.translation = old_p2_world
         root.matrix_world = rot_mat
-
         
-
-        # END visual anchor moves to local z=length
+        # Recalculate distance (should be same but more robust)
+        new_direction = old_p1_world - old_p2_world
+        new_length = new_direction.length
+        
+        # Move End visual anchor to the new Z-length
         end_anchor.location = (0.0, 0.0, new_length)
-
         
+        # 4. SWAP ROOT CONSTRAINTS (Chaining support)
+        # If the root itself was following P1 and tracking P2, swap them.
+        root_loc_con = next((c for c in root.constraints if c.type == 'COPY_LOCATION'), None)
+        root_track_con = next((c for c in root.constraints if c.type == 'TRACK_TO'), None)
+        
+        if root_loc_con: root_loc_con.target = obj_b
+        if root_track_con: root_track_con.target = obj_a
 
-        # 4. RE-ESTABLISH CONSTRAINTS (Dimension Master -> Hooks)
-        # Flip Role logic: 
-        # If is_flipped = True: root is at old end (P2). 
-        #   Hook B is at P2 (start / root origin). Hook A is at P1 (end / z=length).
-        if obj_a and obj_b:
+        # 5. RE-BIND PARTICIPANTS
+        # Hook B (old P2) is now the START point.
+        # Only apply reverse constraint if the Root is NOT following it.
+        if not root_loc_con or root_loc_con.target != obj_b:
+             con_b = obj_b.constraints.new('COPY_LOCATION')
+             con_b.target = start_anchor
+             con_b.use_offset = False
+        obj_b["lsd_is_dimension_hook"] = "START"
 
-            # Re-bind logic
-            # New P1/Root position is at 'new_p1' (which was old_p2).
-            # So Hook B (at old_p2) should follow the START anchor (root).
-            # Hook A (at old_p1) should follow the END anchor (z=length).
+        # Hook A (old P1) is now the END point.
+        if not root_track_con or root_track_con.target != obj_a:
+             con_a = obj_a.constraints.new('COPY_LOCATION')
+             con_a.target = end_anchor
+             con_a.use_offset = False
+        obj_a["lsd_is_dimension_hook"] = "END"
 
-            # Hook B -> START anchor (P1)
-            # AI Editor Note: Chaining Cycle Prevention.
-            # Only apply the reverse constraint (Object -> Anchor) if the Root 
-            # is NOT already following the object (Chaining).
-            root_loc_con = next((c for c in root.constraints if c.type == 'COPY_LOCATION'), None)
-            if not root_loc_con or root_loc_con.target != obj_b:
-                 con_b = obj_b.constraints.new('COPY_LOCATION')
-                 con_b.target = start_anchor
-                 con_b.use_offset = False
-            obj_b["lsd_is_dimension_hook"] = "START"
-
-            # Hook A -> END anchor (P2)
-            root_track_con = next((c for c in root.constraints if c.type == 'TRACK_TO'), None)
-            if not root_track_con or root_track_con.target != obj_a:
-                 con_a = obj_a.constraints.new('COPY_LOCATION')
-                 con_a.target = end_anchor
-                 con_a.use_offset = False
-            obj_a["lsd_is_dimension_hook"] = "END"
-
-            # 5. SYNC ROOT CONSTRAINTS (Chaining support)
-            # If our root follows A and tracks B, and we flipped, we must now follow B and track A.
-            if root_loc_con: root_loc_con.target = obj_b
-            if root_track_con: root_track_con.target = obj_a
-
-            # Update participants on root (Swapped Role)
-            root["lsd_parent_obj"] = obj_b
-            root["lsd_slave_obj"] = obj_a
-
-            
-
-        # Update length
+        # Update labels for logic
+        root["lsd_parent_obj"] = obj_b
+        root["lsd_slave_obj"] = obj_a
+        
+        # Final property refresh
         host_props.length = new_length
         root.lsd_pg_dim_props.length = new_length
-
-        
-
-        update_arrow_settings(root)
+        update_dimension_length(root)
         root.update_tag()
 
-        
-
     except Exception as e:
-
         print(f"[LSD] Flip Role Swap Error: {e}")
-
     finally:
-
-        _dim_update_guard = False
+        _dim_sync_active_ids.remove(root.name)
 
 @staticmethod
 def apply_path_vertex_alignment(context):

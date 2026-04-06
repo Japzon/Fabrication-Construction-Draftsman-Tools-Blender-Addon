@@ -161,9 +161,14 @@ class LSD_OT_RemoveFromDimensionMaster(bpy.types.Operator):
             if self.group_index >= 0 and self.group_index < len(sets):
                 target_group = sets[self.group_index]
                 if self.index >= 0 and self.index < len(target_group.items):
+                    item = target_group.items[self.index]
+                    # AI Editor Note: Cleanup relationships before removal
+                    host = item.obj
+                    if host and hasattr(host, "lsd_pg_dim_props"):
+                         host.driver_remove('lsd_pg_dim_props.length')
+                         host.lsd_pg_dim_props.is_manual = False
+                         host.update_tag()
                     target_group.items.remove(self.index)
-                    # If the group is now empty, we can optionally remove it, 
-                    # but usually better to let user delete manually.
                     return {'FINISHED'}
         else:
             master = scene.lsd_dimensions_master
@@ -256,6 +261,15 @@ class LSD_OT_ClearGroupedDimensions(bpy.types.Operator):
     def execute(self, context):
         sets = context.scene.lsd_dimensions_grouped_sets
         if self.group_index >= 0 and self.group_index < len(sets):
+            group = sets[self.group_index]
+            # AI Editor Note: Per User Request - Clear all drivers/links 
+            # for all items in the group before deleting metadata.
+            for item in group.items:
+                host = item.obj
+                if host and hasattr(host, "lsd_pg_dim_props"):
+                     host.driver_remove('lsd_pg_dim_props.length')
+                     host.lsd_pg_dim_props.is_manual = False
+                     host.update_tag()
             sets.remove(self.group_index)
         return {'FINISHED'}
 
@@ -3383,6 +3397,48 @@ def create_hook_anchor(context, mesh_obj, vert_indices, name_prefix="Hook", disp
 
     return empty
 
+class LSD_OT_AlignAllSelectedDimensions(bpy.types.Operator):
+    """Applies the current alignment settings of the active dimension to all selected dimensions."""
+    bl_idname = "lsd.align_all_selected_dimensions"
+    bl_label = "Align All Selected Dimensions"
+    bl_description = "Apply the active dimension's alignment offsets (+X/-X etc) to all selected dimension assemblies"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    @classmethod
+    def poll(cls, context):
+        from . import core
+        return context.active_object and core.get_dimension_host(context.active_object) is not None
+        
+    def execute(self, context):
+        from . import core
+        host = core.get_dimension_host(context.active_object)
+        if not host: return {'CANCELLED'}
+        
+        src_props = host.lsd_pg_dim_props
+        count = 0
+        
+        # 1. Capture alignment state
+        tags = {
+            "align_x": src_props.align_x,
+            "align_nx": src_props.align_nx,
+            "align_y": src_props.align_y,
+            "align_ny": src_props.align_ny,
+            "align_z": src_props.align_z,
+            "align_nz": src_props.align_nz
+        }
+        
+        # 2. Propagate to selection
+        for obj in context.selected_objects:
+            target_host = core.get_dimension_host(obj)
+            if target_host and target_host != host:
+                tgt_props = target_host.lsd_pg_dim_props
+                for attr, val in tags.items():
+                    setattr(tgt_props, attr, val)
+                count += 1
+                
+        self.report({'INFO'}, f"Applied alignment offsets to {count} dimension(s).")
+        return {'FINISHED'}
+
 class LSD_OT_AddParametricAnchor(bpy.types.Operator):
 
     """Creates an Empty object and adds a Hook modifier to the selected mesh elements"""
@@ -3426,32 +3482,45 @@ class LSD_OT_AddParametricAnchor(bpy.types.Operator):
                     self.report({'WARNING'}, "Action requires selected Mesh object(s).")
                     return {'CANCELLED'}
 
-            all_indices = {} # Mapping obj -> list of indices
+            # Initialize island mapping
+            all_islands = {} # Mapping obj -> List[List[indices]]
 
             
 
             # --- Collection Phase ---
+            # AI Editor Note: Per User Request - Group by connectivity (Islands) 
+            # to avoid hook-spamming on faces while allowing individual anchors for disconnected points.
+            all_islands = {} # Mapping obj -> List[List[indices]]
+            
             for target in targets:
-
                 if initial_mode.startswith('EDIT'):
-
                     bm = bmesh.from_edit_mesh(target.data)
                     bm.verts.ensure_lookup_table()
-                    sel = [v for v in bm.verts if v.select]
-                    if sel:
-
-                        all_indices[target] = [v.index for v in sel]
-
+                    
+                    remaining = {v for v in bm.verts if v.select}
+                    islands = []
+                    while remaining:
+                        root = remaining.pop()
+                        island = {root}
+                        stack = [root]
+                        while stack:
+                            v = stack.pop()
+                            for edge in v.link_edges:
+                                other = edge.other_vert(v)
+                                if other.select and other in remaining:
+                                    remaining.remove(other)
+                                    island.add(other)
+                                    stack.append(other)
+                        islands.append([v.index for v in island])
+                    
+                    if islands:
+                        all_islands[target] = islands
                     bmesh.update_edit_mesh(target.data)
-
                 else:
+                    # Object Mode: Single "island" containing all vertices
+                    all_islands[target] = [[v.index for v in target.data.vertices]]
 
-                    all_indices[target] = [v.index for v in target.data.vertices]
-
-            
-
-            if not all_indices:
-
+            if not all_islands:
                 self.report({'WARNING'}, "No selection found on objects.")
                 return {'CANCELLED'}
 
@@ -3474,13 +3543,14 @@ class LSD_OT_AddParametricAnchor(bpy.types.Operator):
                     shared_location = mathutils.Vector(scene.cursor.location)
                 else:
                     all_coords = []
-                    for target, indices in all_indices.items():
+                    for target, islands in all_islands.items():
                         mw = target.matrix_world
-                        all_coords.extend([mw @ target.data.vertices[i].co.copy() for i in indices])
+                        for island_indices in islands:
+                             all_coords.extend([mw @ target.data.vertices[i].co.copy() for i in island_indices])
                     shared_location = sum(all_coords, mathutils.Vector()) / len(all_coords) if all_coords else mathutils.Vector()
 
                 # 2. Precision Sizing
-                ref_objs = list(all_indices.keys())
+                ref_objs = list(all_islands.keys())
                 ref_obj = initial_active if (initial_active and initial_active in ref_objs) else ref_objs[0]
                 if scene.lsd_anchor_auto_size:
                     dims = ref_obj.dimensions
@@ -3500,10 +3570,12 @@ class LSD_OT_AddParametricAnchor(bpy.types.Operator):
                 context.scene.collection.objects.link(empty)
 
                 # 4. Bind ALL
-                for target, indices in all_indices.items():
+                for target, islands in all_islands.items():
+                    # Flatten islands for grouped binding
+                    flat_indices = [idx for island in islands for idx in island]
                     vg_name = f"VG_{empty.name}"
                     vg = target.vertex_groups.new(name=vg_name)
-                    vg.add(indices, 1.0, 'REPLACE')
+                    vg.add(flat_indices, 1.0, 'REPLACE')
                     mod = target.modifiers.new(name="HookAnchor", type='HOOK')
                     mod.object = empty
                     mod.vertex_group = vg_name
@@ -3514,41 +3586,52 @@ class LSD_OT_AddParametricAnchor(bpy.types.Operator):
             # --- PATH B: Individual Anchors ---
             else:
                 created_count = 0
-                for target, indices in all_indices.items():
-                    # 1. Location
-                    if scene.lsd_anchor_placement_source == 'CURSOR':
-                         loc = mathutils.Vector(scene.cursor.location)
-                    else:
-                         mw = target.matrix_world
-                         loc = sum([mw @ target.data.vertices[i].co.copy() for i in indices], mathutils.Vector()) / len(indices)
+                for target, islands in all_islands.items():
+                    # AI Editor Note: Islands already grouped by connectivity in collection phase.
+                    for island_indices in islands:
+                        # 1. Location
+                        if scene.lsd_anchor_placement_source == 'CURSOR':
+                             loc = mathutils.Vector(scene.cursor.location)
+                        else:
+                             mw = target.matrix_world
+                             loc = sum([mw @ target.data.vertices[i].co.copy() for i in island_indices], mathutils.Vector()) / len(island_indices)
 
+                        # 2. Size
+                        if scene.lsd_anchor_auto_size:
+                            avg_dim = (target.dimensions.x + target.dimensions.y + target.dimensions.z) / 3.0
+                            if avg_dim < 0.001: avg_dim = 0.1
+                            fs = avg_dim * 0.2
+                        else:
+                            fs = scene.lsd_anchor_initial_size
 
-                    # 2. Size
-                    if scene.lsd_anchor_auto_size:
-                        avg_dim = (target.dimensions.x + target.dimensions.y + target.dimensions.z) / 3.0
-                        if avg_dim < 0.001: avg_dim = 0.1
-                        fs = avg_dim * 0.2
-                    else:
-                        fs = scene.lsd_anchor_initial_size
+                        # 3. Create
+                        # Unique name per island 
+                        name_base = f"Hook_{target.name}"
+                        if len(islands) > 1:
+                             name_base += f"_{island_indices[0]}"
+                        
+                        empty = bpy.data.objects.new(name_base, None)
+                        empty.location = loc
+                        empty.empty_display_type = 'SINGLE_ARROW'
+                        empty.empty_display_size = fs
+                        empty["lsd_anchor"] = True
+                        empty.show_in_front = True
+                        context.scene.collection.objects.link(empty)
 
-                    # 3. Create
-                    empty = bpy.data.objects.new(f"Hook_{target.name}", None)
-                    empty.location = loc
-                    empty.empty_display_type = 'SINGLE_ARROW'
-                    empty.empty_display_size = fs
-                    empty["lsd_anchor"] = True
-                    empty.show_in_front = True
-                    context.scene.collection.objects.link(empty)
-
-                    # 4. Bind
-                    vg_name = f"VG_{empty.name}"
-                    vg = target.vertex_groups.new(name=vg_name)
-                    vg.add(indices, 1.0, 'REPLACE')
-                    mod = target.modifiers.new(name="HookAnchor", type='HOOK')
-                    mod.object = empty
-                    mod.vertex_group = vg_name
-                    context.view_layer.update()
-                    mod.matrix_inverse = empty.matrix_world.inverted() @ target.matrix_world
+                        # 4. Bind
+                        vg_name = f"VG_{empty.name}"
+                        vg = target.vertex_groups.new(name=vg_name)
+                        vg.add(island_indices, 1.0, 'REPLACE')
+                        mod = target.modifiers.new(name="HookAnchor", type='HOOK')
+                        mod.object = empty
+                        mod.vertex_group = vg_name
+                        # ZERO-WARP Fix: Force matrix resolution
+                        context.view_layer.update()
+                        mod.matrix_inverse = empty.matrix_world.inverted() @ target.matrix_world
+                        
+                        created_count += 1
+                
+                self.report({'INFO'}, f"Created {created_count} individual anchor(s).")
 
             
 
@@ -9536,7 +9619,7 @@ def register():
         LSD_OT_EnterPoseMode, LSD_OT_EnterObjectMode, LSD_OT_AddBone, LSD_OT_ApplyRestPose,
         LSD_OT_AccurateScale, LSD_OT_CommitPathAlignment,
         LSD_OT_SelectObjectByName, LSD_OT_AddToDimensionMaster, LSD_OT_RemoveFromDimensionMaster, LSD_OT_BakeDimensionsMaster,
-        LSD_OT_ImportGroupedDimensionsBack, LSD_OT_ClearGroupedDimensions
+        LSD_OT_ImportGroupedDimensionsBack, LSD_OT_ClearGroupedDimensions, LSD_OT_AlignAllSelectedDimensions
     ]
     for cls in CLASSES:
 

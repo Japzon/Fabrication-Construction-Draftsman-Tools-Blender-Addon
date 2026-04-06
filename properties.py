@@ -169,28 +169,107 @@ def update_path_align_timer(self, context):
 
 
 
-def update_arrow_settings_timer(self, context):
-    """Dispatches arrow setting update via timer with a per-object guard."""
+# AI Editor Note: Batch update guard to avoid infinite property feedback loops 
+# between grouped dimension items.
+_lsd_is_batch_updating = False
+
+_lsd_is_batch_updating = False
+
+def dispatch_batch_dimension_sync():
+    """Unified Batch Dispatcher: Processes all pending drafting updates in a single frame."""
     from . import core
+    if not core._dim_pending_batch_sync_ids: return None
+    
+    # 1. Collect and Clear
+    targets = list(core._dim_pending_batch_sync_ids)
+    core._dim_pending_batch_sync_ids.clear()
+    
+    # 2. Atomic Evaluation (Ensures all matrices are correct BEFORE we start)
+    bpy.context.view_layer.update()
+    
+    # 3. Process
+    for obj_id in targets:
+        obj = bpy.data.objects.get(obj_id)
+        if obj:
+            # We refresh BOTH length and visuals to ensure total consistency
+            core.update_dimension_length(obj)
+            core.update_arrow_settings(obj)
+            obj.update_tag()
+            
+    return None
+
+def queue_batch_sync(obj_id: str):
+    """Adds an object to the batch queue and ensures a timer is running."""
+    from . import core
+    if not obj_id: return
+    
+    # If set is empty, it means no timer is currently pending 
+    # to process these specifically.
+    fire_timer = len(core._dim_pending_batch_sync_ids) == 0
+    core._dim_pending_batch_sync_ids.add(obj_id)
+    
+    if fire_timer:
+        bpy.app.timers.register(dispatch_batch_dimension_sync, first_interval=0.01)
+
+def update_arrow_settings_timer(self, context):
+    """Optimized Batch Visual Update: Groups visual changes (arrow/text) for bulk syncing."""
+    from . import core
+    global _lsd_is_batch_updating
     obj = self.id_data
     if not obj: return
     
-    obj_id = obj.name
-    if obj_id in core._dim_timer_queued_ids: return
-    core._dim_timer_queued_ids.add(obj_id)
+    # 1. Selection & Group Propagation (Batch Sync)
+    if not _lsd_is_batch_updating and context:
+         _lsd_is_batch_updating = True
+         try:
+             # Target candidates: Combine Grouped Items and Viewport Selection
+             sync_targets = set()
+             
+             # A. Grouped Sets
+             for g_set in context.scene.lsd_dimensions_grouped_sets:
+                  if any(item.obj == obj for item in g_set.items):
+                       for item in g_set.items:
+                            if item.obj and item.obj != obj:
+                                sync_targets.add(item.obj)
+             
+             # B. Viewport Selection
+             from . import core
+             for o in context.selected_objects:
+                 host = core.get_dimension_host(o)
+                 if host and host != obj:
+                     sync_targets.add(host)
 
-    # Note: sync_dimension_flipping internally handles the check if role swap is needed
-    core.sync_dimension_flipping(obj)
+             # C. Execute Propagation
+             for target in sync_targets:
+                 sibling_props = getattr(target, "lsd_pg_dim_props", None)
+                 # AI Editor Note: User Request - Only sync if NOT manual
+                 if sibling_props and not sibling_props.is_manual:
+                      sibling_props.arrow_scale = self.arrow_scale
+                      sibling_props.text_scale = self.text_scale
+                      sibling_props.text_offset = self.text_offset
+                      sibling_props.line_thickness = self.line_thickness
+                      sibling_props.offset = self.offset
+                      # Extended Set
+                      sibling_props.font_name = self.font_name
+                      sibling_props.font_bold = self.font_bold
+                      sibling_props.font_italic = self.font_italic
+                      sibling_props.flip_text = self.flip_text
+                      sibling_props.is_flipped = self.is_flipped
+                      sibling_props.use_extension_lines = self.use_extension_lines
+                      sibling_props.text_alignment = self.text_alignment
+                      sibling_props.align_x = self.align_x
+                      sibling_props.align_nx = self.align_nx
+                      sibling_props.align_y = self.align_y
+                      sibling_props.align_ny = self.align_ny
+                      sibling_props.align_z = self.align_z
+                      sibling_props.align_nz = self.align_nz
+                      # 2. Drafting Orientation
+                      sibling_props.direction = self.direction
+         finally:
+             _lsd_is_batch_updating = False
 
-    def dispatch():
-        core._dim_timer_queued_ids.discard(obj_id)
-        obj = bpy.data.objects.get(obj_id)
-        if obj: 
-            context.view_layer.update()
-            core.update_arrow_settings(obj)
-        return None
 
-    bpy.app.timers.register(dispatch, first_interval=0.03)
+    queue_batch_sync(obj.name)
 
 def update_dim_is_flipped(self, context):
     """Callback for 'Flip Target Roles': Synchronizes the 'Flip Text' property."""
@@ -198,45 +277,58 @@ def update_dim_is_flipped(self, context):
     self.flip_text = not self.flip_text
     update_arrow_settings_timer(self, context)
 
-
 def update_collision_visibility(self, context):
-
     """Toggles visibility for all objects in the Physics_Collisions collection."""
     coll = bpy.data.collections.get("Physics_Collisions")
     if not coll: return None
     show = self.lsd_show_collisions
     for obj in coll.objects:
-
         if obj.name.startswith("COLL_"):
-
             obj.hide_set(not show)
             obj.hide_viewport = not show
-
     return None
 
 def update_dimension_length_timer(self, context):
-    """Dispatches length update via timer with a per-object guard."""
+    """Optimized Batch Length Update: Groups multi-dimension length changes into a single frame."""
     from . import core
+    global _lsd_is_batch_updating
     obj = self.id_data
     if not obj: return
     
-    obj_id = obj.name
-    if obj_id in core._dim_timer_queued_ids: return
-    core._dim_timer_queued_ids.add(obj_id)
+    # 1. Selection & Group Propagation (Batch Sync)
+    if not _lsd_is_batch_updating and context:
+         _lsd_is_batch_updating = True
+         try:
+             sync_targets = set()
+             
+             # A. Grouped Sets
+             for g_set in context.scene.lsd_dimensions_grouped_sets:
+                  if any(item.obj == obj for item in g_set.items):
+                       for item in g_set.items:
+                            if item.obj and item.obj != obj:
+                                 sync_targets.add(item.obj)
+             
+             # B. Viewport Selection
+             for o in context.selected_objects:
+                 from . import core
+                 host = core.get_dimension_host(o)
+                 if host and host != obj:
+                      sync_targets.add(host)
+
+             # C. Execute Propagation
+             for target in sync_targets:
+                 sibling_props = getattr(target, "lsd_pg_dim_props", None)
+                 # AI Editor Note: Only sync if NOT manual
+                 if sibling_props and not sibling_props.is_manual:
+                      sibling_props.length = self.length
+                      sibling_props.unit_display = self.unit_display
+         finally:
+             _lsd_is_batch_updating = False
 
     if hasattr(self, "is_manual"):
         self.is_manual = True
 
-    def dispatch():
-        core._dim_timer_queued_ids.discard(obj_id)
-        obj = bpy.data.objects.get(obj_id)
-        if obj: 
-            # Force matrix resolution for hidden objects outside of depsgraph handlers
-            context.view_layer.update()
-            core.update_dimension_length(obj)
-        return None
-
-    bpy.app.timers.register(dispatch, first_interval=0.03)
+    queue_batch_sync(obj.name)
 
 def update_dimension_driver_target(self, context):
     """Sets up a driver for the dimension to follow the target dimension's length."""
@@ -1093,22 +1185,25 @@ def register():
             
             # 1. Native Hide for Anchors (Masters and Manual Hooks)
             if is_manual_pnt or (is_internal_anchor and hide_anchors):
-                 obj.hide_viewport = hide_anchors
-                 # AI Editor Note: Removed hide_set(hide_anchors) to ensure components 
-                 # stay in the depsgraph and evaluate constraints while hidden.
+                 obj.hide_set(hide_anchors)
+                 # AI Editor Note: Using hide_set (Eye) instead of hide_viewport (Screen)
+                 # to ensure property update callbacks still fire during batch edits.
             
             # 2. Native Hide for Dimensions (Whole assembly, including internal anchors)
             if is_dim or is_internal_anchor:
                 # To prevent broken lines leading to hidden roots, 
                 # INTERNAL anchors must hide whenever the dimension hides.
                 h = hide_dims if is_dim else (hide_dims or (is_internal_anchor and hide_anchors))
-                obj.hide_viewport = h
-                # AI Editor Note: Removed hide_set(h) to ensure length sync and 
-                # batch-editing work while dimensions are hidden.
+                obj.hide_set(h)
+                
+                # AI Editor Note: Recursively ensure children (Extension Lines, Labels, etc.) 
+                # follow the root's visibility state even if they lack individual tags.
+                if obj.get("lsd_is_dimension_root"):
+                     for child in obj.children:
+                          child.hide_set(h)
             
-            # Reset hide_set to False to ensure all items are evaluated
-            if obj.library is None:
-                 obj.hide_set(False)
+            # AI Editor Note: Removed global hide_set(False) reset to prevent un-hiding 
+            # objects that were manually hidden by the user outside of the toolkit.
 
     bpy.types.Scene.lsd_hide_all_anchors = bpy.props.BoolProperty(
         name="Hide All Anchors", 

@@ -272,6 +272,10 @@ class LSD_PT_Dimensions_And_Precision_Transforms:
                 row_neg.prop(dim_props, "align_nx", toggle=True, text="-X")
                 row_neg.prop(dim_props, "align_ny", toggle=True, text="-Y")
                 row_neg.prop(dim_props, "align_nz", toggle=True, text="-Z")
+                
+                # Bulk Alignment Tool (User Request)
+                col.separator()
+                col.operator("lsd.align_all_selected_dimensions", icon='ORIENTATION_GLOBAL')
 
 
                 
@@ -366,17 +370,9 @@ class LSD_PT_Dimensions_Tool_Properties(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context: bpy.types.Context) -> bool:
-        # Show if we have grouped dimensions or a dimension is selected
-        grouped = getattr(context.scene, "lsd_dimensions_grouped", [])
-        if len(grouped) > 0:
-            return True
-            
-        obj = context.active_object
-        if obj:
-             from .. import core
-             if core.get_dimension_host(obj):
-                  return True
-        return False
+        # AI Editor Note: User Request - Grouped control should be visible at all times 
+        # to allow managing the drafting hub even without a direct selection.
+        return True
 
     def draw(self, context: bpy.types.Context) -> None:
         layout = self.layout
