@@ -284,7 +284,7 @@ class LSD_PT_Dimensions_And_Precision_Transforms:
             
             # New Feature: Manual List Management
             row = master_box.row()
-            row.operator("lsd.add_to_dimension_master", text="Track Selected Dimension", icon='ADD')
+            row.operator("lsd.add_to_dimension_master", text="Track Selected Dimensions", icon='ADD')
             
             master = context.scene.lsd_dimensions_master
             if not master:
@@ -305,7 +305,7 @@ class LSD_PT_Dimensions_And_Precision_Transforms:
                     row.prop(host.lsd_pg_dim_props, "length", text="Length")
                     
                     # LINK DRIVER (Eyedropper) - Category 4 Logic
-                    row.prop(item, "driver_target", text="", icon='EYEDROPPER')
+                    row.prop(item, "driver_target", text="")
 
                     # New Feature: Individual removal (X)
                     rem_op = row.operator("lsd.remove_from_dimension_master", text="", icon='X')

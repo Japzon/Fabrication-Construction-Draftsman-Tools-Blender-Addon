@@ -649,12 +649,15 @@ def generate_smart_dimension_parametric(context, p1, p2, name="Dimension", paren
     root.hide_viewport = True
     root.hide_render = True
     root.empty_display_size = 0.05
-    # FINAL COORDINATE RESOLVE: Use Blender's built-in to_track_quat for a
-    # guaranteed right-handed, valid rotation matrix.
-    # Root's +Z axis points from p1 toward p2. All child components that live
-    # at local z=0 start at p1, and at local z=initial_length end at p2.
+    # FINAL COORDINATE RESOLVE: Use a robust tracking logic to avoid singularities.
+    # Root's +Z axis points from p1 toward p2.
     z_axis = direction.normalized()
-    rot_quat = z_axis.to_track_quat('Z', 'Y')
+    # Avoid singularity where track axis ('Z') is parallel to up reference axis ('Y')
+    # by using 'X' as stabilizer for vertical or Y-heavy dimensions.
+    if abs(z_axis.z) > 0.9 or abs(z_axis.y) > 0.9:
+         rot_quat = z_axis.to_track_quat('Z', 'X')
+    else:
+         rot_quat = z_axis.to_track_quat('Z', 'Y')
     rot_mat = rot_quat.to_matrix().to_4x4()
     rot_mat.translation = p1_v
     # AI Editor Note: DUAL LOCK - Set both matrix and properties to ensure stability 
@@ -676,8 +679,30 @@ def generate_smart_dimension_parametric(context, p1, p2, name="Dimension", paren
          parent_b[0]["lsd_dim_root"] = root
          
     root["lsd_is_dimension_root"] = True
+    
+    # 2. CHAINING DYNAMICS: Root Follows P1 
+    # AI Editor Note: To prevent dependency cycles while mirroring chaining support (1-2, 2-3).
+    # We only apply Root constraints if the target is ALREADY a dimension component. 
+    # For regular objects, the Dimension remains the MASTER (Object following Anchor).
+    track_p1 = parent_a and (parent_a[0].get("lsd_is_dimension_anchor") or parent_a[0].get("lsd_is_dimension_hook"))
+    track_p2 = parent_b and (parent_b[0].get("lsd_is_dimension_anchor") or parent_b[0].get("lsd_is_dimension_hook"))
+
+    if track_p1:
+         con_loc = root.constraints.new('COPY_LOCATION')
+         con_loc.target = parent_a[0]
+         
+    if track_p2:
+         con_track = root.constraints.new('TRACK_TO')
+         con_track.target = parent_b[0]
+         con_track.track_axis = 'TRACK_Z'
+         con_track.up_axis = 'UP_Y'
+
+    # Pass 4: Refresh coordinates before parenting visual children
+    context.view_layer.update()
+    
     # AI Editor Note: Cache world transformation for parenting restoration
     old_mat = root.matrix_world.copy()
+    
     # 3. Create Physical Master Anchors (For Hook Linking)
     # These are hidden/small empties that NEVER drift with the offset.
     aa_master = bpy.data.objects.new(f"{name}_Anchor_START_MASTER", None)
@@ -690,6 +715,7 @@ def generate_smart_dimension_parametric(context, p1, p2, name="Dimension", paren
     ab_master.location = (0, 0, initial_length)
     aa_master["lsd_anchor_type"] = "START"
     ab_master["lsd_anchor_type"] = "END"
+    
     # 4. Create Visual Components (Offset-able)
     def create_arrowhead(suffix, rot_x):
         mesh = core.get_or_create_arrow_mesh()
@@ -786,6 +812,14 @@ def generate_smart_dimension_parametric(context, p1, p2, name="Dimension", paren
     # The dimension is the MASTER. Both hooks (meshes) are pulled/pushed 
     # as the dimension moves or changes length by constraining them to our anchors.
     def apply_dim_constraint(obj, target, suffix):
+        # AI Editor Note: Chaining Cycle Prevention.
+        # If the object is already a dimension component or hook, 
+        # we check if it is part of our own root's master chain to avoid recursion.
+        if obj.get("lsd_is_dimension_anchor") or obj.get("lsd_is_dimension_hook"):
+             # If we are already following THIS object (chaining), do not pull it back
+             if any(c.target == obj for c in root.constraints if hasattr(c, 'target')):
+                  return None
+
         # Check for existing constraint to avoid fighting (Project Task 1.1.2 Stability Pass)
         for con in obj.constraints:
             if con.type == 'COPY_LOCATION' and con.target and con.target.get("lsd_is_dimension_anchor") == "MASTER":

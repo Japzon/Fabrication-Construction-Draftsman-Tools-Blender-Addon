@@ -50,7 +50,8 @@ _update_gizmo_guard = False
 
 _local_cursor_update_guard = False
 
-_dim_timer_queued = False
+# AI Editor Note: Transitioned from boolean to set to support batch-editing in grouped lists.
+_dim_timer_queued_ids = set()
 
 _dim_update_guard = False
 
@@ -1394,17 +1395,15 @@ def lsd_dimension_sync_handler(scene: bpy.types.Scene, depsgraph: bpy.types.Deps
 
             
 
-        dim_props = getattr(obj, "lsd_pg_dim_props", None)
-        if not dim_props:
-
-            continue
-
+        eval_obj = depsgraph.id_eval_get(obj) if depsgraph else obj
+        dim_props = getattr(eval_obj, "lsd_pg_dim_props", None)
+        if not dim_props: continue
+        
+        # Original props for WRITING (modifying original ID data)
+        orig_dim_props = getattr(obj, "lsd_pg_dim_props", None)
             
-
         root = obj.parent
         if not root: continue
-
-        
 
         # Calculate Real-World orientation and distance
         # We find the Mesh Hook (the slave) to determine distance
@@ -1428,7 +1427,6 @@ def lsd_dimension_sync_handler(scene: bpy.types.Scene, depsgraph: bpy.types.Deps
         local_target = root.matrix_world.inverted() @ target_mesh_hook.matrix_world.translation
         
         # 1. LENGTH SYNC (X/Y/Z primary drafting axis)
-        # AI Editor Note: Using the guard to prevent fighting with manual sliders
         if _dim_update_guard: continue
 
         last_l = obj.get("_lsd_last_built_length", -1.0)
@@ -1440,7 +1438,7 @@ def lsd_dimension_sync_handler(scene: bpy.types.Scene, depsgraph: bpy.types.Deps
              if abs(curr_l - dist) > 0.0001:
                   _dim_update_guard = True
                   try:
-                      dim_props["length"] = dist
+                      orig_dim_props["length"] = dist
                       update_dimension_length(obj)
                       obj["_lsd_last_built_length"] = dist
                       # Tags to ensure anchors/points refresh coordinate matrices
@@ -1456,10 +1454,14 @@ def lsd_dimension_sync_handler(scene: bpy.types.Scene, depsgraph: bpy.types.Deps
 
         # 2. TRANSVERSE SYNC (Alignment stability)
         if abs(dim_props.target_x - local_target.x) > 0.0001 or abs(dim_props.target_y - local_target.y) > 0.0001:
-             dim_props["target_x"] = local_target.x
-             dim_props["target_y"] = local_target.y
              if not dim_props.is_manual:
-                  update_dimension_length(obj)
+                  _dim_update_guard = True
+                  try:
+                       orig_dim_props["target_x"] = local_target.x
+                       orig_dim_props["target_y"] = local_target.y
+                       update_dimension_length(obj)
+                  finally:
+                       _dim_update_guard = False
 
 def update_dimension_length(obj):
 
@@ -1469,14 +1471,10 @@ def update_dimension_length(obj):
     Source of Truth: The Label (Host) object.
     """
     if not obj: return
-
     
-
     root = get_dimension_root(obj)
     host = get_dimension_host(obj)
     if not root or not host: return
-
-    
 
     dim_props = getattr(host, "lsd_pg_dim_props", None)
     if not dim_props: return
@@ -2037,8 +2035,13 @@ def sync_dimension_flipping(obj):
     try:
 
         # Reposition root Empty via world matrix to avoid eval-frame conflicts
-        z_axis = direction.normalized()
-        rot_quat = z_axis.to_track_quat('Z', 'Y')
+        # AI Editor Note: Per User Request (Session B) - Flip around local Y axis 
+        # instead of X. This ensures that while Z (the dimension line) flips 180 degrees 
+        # to swap roles, the Y axis (the drafting offset side) is PRESERVED, keeping 
+        # the assembly on the same side of the target points.
+        old_rot = root.matrix_world.to_quaternion()
+        flip_quat = mathutils.Quaternion((0.0, 1.0, 0.0), math.pi) # 180 flip around local Y
+        rot_quat = old_rot @ flip_quat
         rot_mat = rot_quat.to_matrix().to_4x4()
         rot_mat.translation = new_p1
         root.matrix_world = rot_mat
@@ -2061,27 +2064,31 @@ def sync_dimension_flipping(obj):
             # So Hook B (at old_p2) should follow the START anchor (root).
             # Hook A (at old_p1) should follow the END anchor (z=length).
 
-            
-
-            # Hook B -> START anchor
-            con_b = obj_b.constraints.new('COPY_LOCATION')
-            con_b.target = start_anchor
-            con_b.use_offset = False
+            # Hook B -> START anchor (P1)
+            # AI Editor Note: Chaining Cycle Prevention.
+            # Only apply the reverse constraint (Object -> Anchor) if the Root 
+            # is NOT already following the object (Chaining).
+            root_loc_con = next((c for c in root.constraints if c.type == 'COPY_LOCATION'), None)
+            if not root_loc_con or root_loc_con.target != obj_b:
+                 con_b = obj_b.constraints.new('COPY_LOCATION')
+                 con_b.target = start_anchor
+                 con_b.use_offset = False
             obj_b["lsd_is_dimension_hook"] = "START"
 
-            
-
-            # Hook A -> END anchor
-            con_a = obj_a.constraints.new('COPY_LOCATION')
-            con_a.target = end_anchor
-            con_a.use_offset = False
+            # Hook A -> END anchor (P2)
+            root_track_con = next((c for c in root.constraints if c.type == 'TRACK_TO'), None)
+            if not root_track_con or root_track_con.target != obj_a:
+                 con_a = obj_a.constraints.new('COPY_LOCATION')
+                 con_a.target = end_anchor
+                 con_a.use_offset = False
             obj_a["lsd_is_dimension_hook"] = "END"
 
-            
+            # 5. SYNC ROOT CONSTRAINTS (Chaining support)
+            # If our root follows A and tracks B, and we flipped, we must now follow B and track A.
+            if root_loc_con: root_loc_con.target = obj_b
+            if root_track_con: root_track_con.target = obj_a
 
             # Update participants on root (Swapped Role)
-            # This is important for the sync handler/layout to know who is who.
-            # We don't swap the 'obj' variables, we just re-label their roles.
             root["lsd_parent_obj"] = obj_b
             root["lsd_slave_obj"] = obj_a
 

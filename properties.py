@@ -170,22 +170,24 @@ def update_path_align_timer(self, context):
 
 
 def update_arrow_settings_timer(self, context):
-    """Dispatches arrow setting update via timer with a single-queue guard."""
+    """Dispatches arrow setting update via timer with a per-object guard."""
     from . import core
-    if getattr(core, "_dim_timer_queued", False): return
-    core._dim_timer_queued = True
-
-    # AI Editor Note: Specifically trigger the heavy role swap logic 
-    # IF this is the property being changed. self is the PropertyGroup.
     obj = self.id_data
-    if obj:
-         # Note: sync_dimension_flipping internally handles the check if role swap is needed
-         core.sync_dimension_flipping(obj)
+    if not obj: return
+    
+    obj_id = obj.name
+    if obj_id in core._dim_timer_queued_ids: return
+    core._dim_timer_queued_ids.add(obj_id)
+
+    # Note: sync_dimension_flipping internally handles the check if role swap is needed
+    core.sync_dimension_flipping(obj)
 
     def dispatch():
-        core._dim_timer_queued = False
-        obj = self.id_data
-        if obj: core.update_arrow_settings(obj)
+        core._dim_timer_queued_ids.discard(obj_id)
+        obj = bpy.data.objects.get(obj_id)
+        if obj: 
+            context.view_layer.update()
+            core.update_arrow_settings(obj)
         return None
 
     bpy.app.timers.register(dispatch, first_interval=0.03)
@@ -213,18 +215,25 @@ def update_collision_visibility(self, context):
     return None
 
 def update_dimension_length_timer(self, context):
-    """Dispatches length update via timer with a single-queue guard."""
+    """Dispatches length update via timer with a per-object guard."""
     from . import core
-    if getattr(core, "_dim_timer_queued", False): return
-    core._dim_timer_queued = True
+    obj = self.id_data
+    if not obj: return
+    
+    obj_id = obj.name
+    if obj_id in core._dim_timer_queued_ids: return
+    core._dim_timer_queued_ids.add(obj_id)
 
     if hasattr(self, "is_manual"):
         self.is_manual = True
 
     def dispatch():
-        core._dim_timer_queued = False
-        obj = self.id_data
-        if obj: core.update_dimension_length(obj)
+        core._dim_timer_queued_ids.discard(obj_id)
+        obj = bpy.data.objects.get(obj_id)
+        if obj: 
+            # Force matrix resolution for hidden objects outside of depsgraph handlers
+            context.view_layer.update()
+            core.update_dimension_length(obj)
         return None
 
     bpy.app.timers.register(dispatch, first_interval=0.03)
@@ -256,6 +265,7 @@ def update_dimension_driver_target(self, context):
         
         # 2. Immediate Sync (Copy length once)
         if hasattr(target_obj, "lsd_pg_dim_props"):
+             host.lsd_pg_dim_props.is_manual = True # AI Editor Note: Must be manual to prevent sync fighting
              host.lsd_pg_dim_props.length = target_obj.lsd_pg_dim_props.length
         
         # 3. Establish Persistent Driver
@@ -270,6 +280,11 @@ def update_dimension_driver_target(self, context):
         
         # Force update
         host.update_tag()
+    else:
+        # If unlinked, we can optionally return to dynamic mode
+        if host and hasattr(host, "lsd_pg_dim_props"):
+             host.lsd_pg_dim_props.is_manual = False
+             host.update_tag()
 
 def update_collision_sync_all(self, context, prop_name: str, mod_name: str, mod_type: str, attr_name: str):
 
@@ -468,7 +483,7 @@ class LSD_PG_Dimensions_Master_Item(bpy.types.PropertyGroup):
     driver_target: bpy.props.PointerProperty(
         type=bpy.types.Object, 
         name="Link Source",
-        description="Pick another dimension to copy its length",
+        description="Link Source - Pick another dimension to mirror its length.",
         poll=lambda self, obj: obj.get("lsd_is_dimension") or obj.get("lsd_is_dimension_root"),
         update=update_dimension_driver_target
     )
@@ -1079,7 +1094,8 @@ def register():
             # 1. Native Hide for Anchors (Masters and Manual Hooks)
             if is_manual_pnt or (is_internal_anchor and hide_anchors):
                  obj.hide_viewport = hide_anchors
-                 obj.hide_set(hide_anchors)
+                 # AI Editor Note: Removed hide_set(hide_anchors) to ensure components 
+                 # stay in the depsgraph and evaluate constraints while hidden.
             
             # 2. Native Hide for Dimensions (Whole assembly, including internal anchors)
             if is_dim or is_internal_anchor:
@@ -1087,7 +1103,12 @@ def register():
                 # INTERNAL anchors must hide whenever the dimension hides.
                 h = hide_dims if is_dim else (hide_dims or (is_internal_anchor and hide_anchors))
                 obj.hide_viewport = h
-                obj.hide_set(h)
+                # AI Editor Note: Removed hide_set(h) to ensure length sync and 
+                # batch-editing work while dimensions are hidden.
+            
+            # Reset hide_set to False to ensure all items are evaluated
+            if obj.library is None:
+                 obj.hide_set(False)
 
     bpy.types.Scene.lsd_hide_all_anchors = bpy.props.BoolProperty(
         name="Hide All Anchors", 

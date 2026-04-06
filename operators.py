@@ -88,31 +88,59 @@ class LSD_OT_SelectObjectByName(bpy.types.Operator):
         return {'CANCELLED'}
 
 class LSD_OT_AddToDimensionMaster(bpy.types.Operator):
-    """Adds the selected dimension object to the master interface list."""
+    """Adds the selected dimension objects to the master interface list."""
     bl_idname = "lsd.add_to_dimension_master"
-    bl_label = "Add Selected Dimension"
-    bl_description = "Add the currently selected dimension assembly to the tracking list"
+    bl_label = "Track Selected Dimensions"
+    bl_description = "Add all currently selected dimension assemblies to the tracking list"
     bl_options = {'REGISTER', 'UNDO'}
     
     @classmethod
     def poll(cls, context):
         from . import core
+        # Allow if at least one selected object is a dimension host
+        for o in context.selected_objects:
+            if core.get_dimension_host(o): return True
         return core.get_dimension_host(context.active_object) is not None
         
     def execute(self, context):
         from . import core
-        host = core.get_dimension_host(context.active_object)
-        if not host:
+        master = context.scene.lsd_dimensions_master
+        existing_hosts = {item.obj for item in master if item.obj}
+        
+        added_count = 0
+        skipped_count = 0
+        
+        # 1. Gather all unique dimension hosts from selection
+        targets = set()
+        for obj in context.selected_objects:
+            host = core.get_dimension_host(obj)
+            if host:
+                targets.add(host)
+        
+        if not targets:
+            active_host = core.get_dimension_host(context.active_object)
+            if active_host:
+                targets.add(active_host)
+        
+        if not targets:
+            self.report({'WARNING'}, "No dimensions found in selection.")
             return {'CANCELLED'}
-        
-        # Check for duplicates
-        for item in context.scene.lsd_dimensions_master:
-            if item.obj == host:
-                self.report({'INFO'}, "Dimension already in master list.")
-                return {'FINISHED'}
-        
-        item = context.scene.lsd_dimensions_master.add()
-        item.obj = host
+            
+        # 2. Add them to the list if not already present
+        for host in targets:
+            if host in existing_hosts:
+                skipped_count += 1
+                continue
+            
+            item = master.add()
+            item.obj = host
+            added_count += 1
+            
+        if added_count > 0:
+            self.report({'INFO'}, f"Tracked {added_count} new dimension(s).")
+        elif skipped_count > 0:
+            self.report({'INFO'}, "Selected dimensions are already tracked.")
+            
         return {'FINISHED'}
 
 class LSD_OT_RemoveFromDimensionMaster(bpy.types.Operator):
