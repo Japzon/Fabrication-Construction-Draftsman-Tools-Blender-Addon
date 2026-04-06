@@ -1,32 +1,0 @@
-# Layouts & Systems Draftsman Toolkit - AI Update Plan
-
-## Objective
-Finalize the structural overhaul following the LSD mandate and ensure full stability of the addon in Blender 4.5.6 LTS.
-
-## Tasks
-1. **Fix Registration Errors (COMPLETED)**:
-   - Updated `core.py` to consolidate class registration and app handler management.
-   - Enhanced `properties.py` and `core.py` with robust `try/except` registration guards.
-   - Verified registration order in `__init__.py` (Core -> Properties -> Operators -> Panels).
-
-2. **UI Standardization (COMPLETED)**:
-   - Standardized all panel headers using `ui_common.draw_panel_header()` with exactly 5 arguments.
-   - Updated modules: `ui_export`, `ui_kinematics`, `ui_lighting`, `ui_inertial`, `ui_collision`, `ui_transmission`, and `ui_assets`.
-   - Standardized Panel class names and Operator names to match "Literal" GUI labels.
-
-3. **Dynamic Enum Filtering (COMPLETED)**:
-   - Implemented `lsd_part_type_items` in `properties.py` to filter sub-types based on the selected `lsd_part_category`.
-   - Updated the `lsd_part_type` EnumProperty to use the dynamic callback.
-
-4. **Edit Mode Measuring (COMPLETED)**:
-   - Updated `LSD_OT_Add_Dimension` in `operators.py` to handle vertex selection order via `bm.select_history`.
-   - Ensured `bm.verts.ensure_lookup_table()` is called before accessing vertex indices.
-
-5. **Stability & Scripts (COMPLETED)**:
-   - Verified existence and functionality of `start_blender_with_addon.bat`.
-   - Ensured `dev_tool.py` uses correct lowercase module naming for Blender compatibility.
-
-## Procedural Safety (Ongoing Compliance)
-- **Layout Consistency**: Ensure the return `box` from `draw_panel_header` is used for all internal panel drawing to maintain visual containment.
-- **BMesh Safety**: Strictly follow the `bm.free()` lifecycle in `generators.py` and `operators.py` to prevent memory leaks and viewport crashes.
-- **Literal Naming**: Maintain strict adherence to GUI labels in all class and operator identifiers.
