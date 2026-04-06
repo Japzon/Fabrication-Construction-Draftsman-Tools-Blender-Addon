@@ -6823,7 +6823,61 @@ def get_all_children_objects(bone: bpy.types.PoseBone, context: bpy.types.Contex
 
     return list(all_objs)
 
-def update_single_bone_gizmo(bone: bpy.types.PoseBone, show_gizmos: bool, style: str = 'DEFAULT') -> None:
+def calculate_bone_mesh_radius(bone: bpy.types.PoseBone, scene: bpy.types.Scene) -> float:
+    """
+    Calculates the physical radius (in meters) of a bone based on the high-precision 
+    perpendicular distance from mesh vertices to the bone's axis.
+    """
+    # 1. Gather all meshes associated with this bone's mechanical hierarchy
+    armature_obj = bone.id_data
+    # Find direct children of the bone (could be meshes or empties/groups)
+    bone_direct_children = [o for o in armature_obj.children if o.parent_type == 'BONE' and o.parent_bone == bone.name]
+    
+    all_meshes = []
+    for root in bone_direct_children:
+        if root.type == 'MESH':
+            all_meshes.append(root)
+        # Recursively find all meshes under these roots
+        all_meshes.extend([c for c in root.children_recursive if c.type == 'MESH'])
+    
+    local_min = mathutils.Vector((0.0, 0.0, 0.0))
+    local_max = mathutils.Vector((0.0, 0.0, 0.0))
+    has_meshes = False
+    
+    # Normalize our head/tail to world space for calculation
+    head_world = armature_obj.matrix_world @ bone.head
+    tail_world = armature_obj.matrix_world @ bone.tail
+    bone_axis_world = (tail_world - head_world).normalized()
+    
+    max_radius_bu = 0.0
+    
+    for mesh_obj in all_meshes:
+        has_meshes = True
+        
+        # We iterate over world-space bounding box corners for performance,
+        # mirroring the logic used in the AddBone generator.
+        for point in mesh_obj.bound_box:
+            v_world = mesh_obj.matrix_world @ mathutils.Vector(point)
+            
+            # Perpendicular distance from world point to infinite world line (head->tail)
+            vec_to_point = v_world - head_world
+            proj_len = vec_to_point.dot(bone_axis_world)
+            proj_vec = proj_len * bone_axis_world
+            dist = (vec_to_point - proj_vec).length
+            
+            if dist > max_radius_bu:
+                max_radius_bu = dist
+    
+    if not has_meshes:
+        return 0.0
+        
+    # 2. Convert BU to Meters (CAD Standard)
+    unit_scale = scene.unit_settings.scale_length
+    if unit_scale <= 0: unit_scale = 1.0
+    
+    return max_radius_bu * unit_scale
+
+def update_single_bone_gizmo(bone: bpy.types.PoseBone, show_gizmos: bool = True, style: str = 'DEFAULT') -> None:
 
     """
     Updates the custom shape (widget or "gizmo") for a single bone to visually
@@ -6841,224 +6895,47 @@ def update_single_bone_gizmo(bone: bpy.types.PoseBone, show_gizmos: bool, style:
         bone.custom_shape = None
         return
 
+    # 1. Access visual settings and ensure the bone is in the correct rotation mode.
     bone.rotation_mode = 'XYZ'
     gizmo_type = 'ROTATION'
     if props.joint_type == 'prismatic':
-
         gizmo_type = 'SLIDER'
-
     elif props.joint_type == 'spherical':
-
         gizmo_type = 'SPHERICAL'
-
     elif props.joint_type == 'fixed':
-
         gizmo_type = 'FIXED'
-
     elif props.joint_type == 'base':
-
         gizmo_type = 'BASE'
 
-    # Get the UI-selected axis, which directly maps to the bone's local axis.
-    # AI Editor Note: The 'BASE' gizmo is axis-independent.
+    # 2. Determine the physical alignment axis.
     raw_axis = props.axis_alignment.replace("-", "")
-
-    
-
-    # AI Editor Note: Corrected gizmo axis mapping to match the constraints and user expectations.
-    # The constraints map X->Z, Y->X, Z->Y (via axis_map {0:2, 1:0, 2:1}).
-    # The gizmos must follow the same mapping to visually align with the physics.
     if raw_axis == 'X': target_axis = 'Z'
     elif raw_axis == 'Y': target_axis = 'X'
     else: target_axis = 'Y'
     if gizmo_type == 'BASE': target_axis = 'Z'
-    # AI Editor Note: Retrieve the gizmo style. 
-    # Use the passed style argument to avoid context issues in callbacks/timers.
+
+    # 3. Apply the widget shape.
     wgt = create_flat_gizmo(gizmo_type, target_axis, style)
     if wgt:
-
         bone.custom_shape = wgt
-        base_scale = 1.0
-        found_parametric_scale = False
-        def get_parametric_props(b):
-
-            """
-            Searches the child meshes of a bone for a parametric 'BASIC_JOINT'
-            and returns its properties.
-            """
-            for obj in get_all_children_objects(b, bpy.context):
-
-                if hasattr(obj, "lsd_pg_mech_props") and obj.lsd_pg_mech_props.is_part and obj.lsd_pg_mech_props.category == 'BASIC_JOINT':
-
-                    # Return the actual geometry radius if it's a gear/wheel
-                    if obj.lsd_pg_mech_props.category in ['GEAR', 'WHEEL', 'BASIC_JOINT']:
-
-                        return obj.lsd_pg_mech_props
-
-            return None
-
-        # --- ACTION: Calculate Bone-Local Bounding Box ---
-        local_min = mathutils.Vector((0.0, 0.0, 0.0))
-        local_max = mathutils.Vector((0.0, 0.0, 0.0))
-        has_meshes = False
-
         
-
-        # Access the Armature object to get its world transform
-        armature_obj = bone.id_data
-        bone_world_matrix = armature_obj.matrix_world @ bone.matrix
-        bone_world_mat_inv = bone_world_matrix.inverted()
-
-        
-
-        # Robust context handling for background updates.
-        # If bpy.context is restricted, we fall back to scene-wide search.
+        # 4. Physical Scale Normalization.
+        # props.joint_radius is stored in Meters (CAD-standard).
+        # We MUST normalize to scene scale (Meters per BU) to get the correct visual size.
         search_ctx = bpy.context if bpy.context and hasattr(bpy.context, "scene") else None
         target_scene = search_ctx.scene if search_ctx else (bone.id_data.users_scene[0] if bone.id_data.users_scene else bpy.data.scenes[0])
-
-        
-
-        child_meshes = []
-        # Find objects parented directly to this bone.
-        rig = bone.id_data
-        # Optimization: Use a list comprehension to find direct descendants of the bone.
-        child_meshes = [o for o in armature_obj.children if o.parent == armature_obj and o.parent_type == 'BONE' and o.parent_bone == bone.name]
-
-        
-
-        # Also include recursively parented meshes, but avoid full scene loops if possible.
-        # But Blender's hierarchy can be complex, so if we have many, we stick to direct ones
-        # for performance, or look into rig.children.
-        all_children = []
-        for o in child_meshes:
-
-            all_children.append(o)
-            all_children.extend([c for c in o.children_recursive if c.type == 'MESH'])
-
-        
-
-        child_meshes = all_children
-        for mesh_obj in child_meshes:
-
-            if mesh_obj.type != 'MESH': continue
-            has_meshes = True
-
-            
-
-            # Bound box sync
-            for point in mesh_obj.bound_box:
-
-                world_point = mesh_obj.matrix_world @ mathutils.Vector(point)
-                local_point = bone_world_mat_inv @ world_point
-
-                
-
-                for i in range(3):
-
-                    local_min[i] = min(local_min[i], local_point[i])
-                    local_max[i] = max(local_max[i], local_point[i])
-
-        # Access variables for scaling
         unit_scale = target_scene.unit_settings.scale_length
-        s = 1.0 / unit_scale if unit_scale > 0 else 1.0
-        # --- ACTION: Determine Base Scale ---
-        base_scale = 0.5 # Default fallback (normalized meters)
+        if unit_scale <= 0: unit_scale = 1.0
 
-        
-
-        if has_meshes:
-
-            dims = local_max - local_min
-            # For Rotation gizmos (Disk/Ring), we want the diameter.
-            # In Blender bone space, Y is the bone axis. Radius is in X/Z plane.
-            base_scale = max(dims)
-
-            
-
-            # Special case for sliders: often better to match bone length
-            if gizmo_type == 'SLIDER':
-
-                if bone.length > config.MIN_BONE_LENGTH:
-
-                    base_scale = bone.length / 2.0
-
-            
-
-            # Ensure it's at least as large as the manual radius property
-            # props.joint_radius is already in BU (meters).
-            if base_scale < props.joint_radius:
-
-                base_scale = props.joint_radius
-
-        else:
-
-            # Fallback to properties if no meshes attached.
-            if gizmo_type == 'ROTATION':
-
-                base_scale = props.joint_radius
-
-            elif gizmo_type == 'SLIDER':
-
-                # bone.length is in BU.
-                base_scale = bone.length / 2.0 if bone.length > config.MIN_BONE_LENGTH else 0.5
-
-            elif gizmo_type == 'FIXED':
-
-                base_scale = props.joint_radius * 0.5
-
-            elif gizmo_type == 'BASE':
-
-                # bone.length is in BU.
-                base_scale = bone.length if bone.length > 0.05 else (props.joint_radius * 2.0)
-                if base_scale < 0.05:
-
-                    base_scale = 0.5
-
-                
-
-                # Ensure it doesn't stay at 0.5 if it's meant to be small
-                if bone.length < 0.2 and props.joint_radius < 0.2:
-
-                    base_scale = max(bone.length, props.joint_radius * 2.0)
-
-                
-
-        # --- AI Editor Note: Physical Scale Normalization ---
-        # props.joint_radius is stored in physical Meters (CAD-standard).
-        # Blender's custom_shape_scale_xyz operates in raw Blender Units (BU).
-        # We MUST divide by unit_scale to get the equivalent BU scale for the gizmo.
-        # Example: 0.1m radius in a Millimeter scene (0.001 scale) needs a 100.0 BU gizmo scale.
-        unit_scale = target_scene.unit_settings.scale_length
-        if unit_scale <= 0: unit_scale = 1.0 # Guard against invalid scene zero-scale
-        
-        # 1. Normalize the joint radius to the current scene's Blender Units.
         r_bu = props.joint_radius / unit_scale
-        
-        # 2. Derive scale from meshes if they exist (ensuring fit)
-        if has_meshes:
-            # max(dims) is already in BU because the matrices were relative to the rig (BU).
-            # We respect joint_radius as a physical minimum, but allow the mesh to push it larger.
-            # Convert props.joint_radius (meters) to BU for comparison.
-            mesh_radius_bu = max(dims) / 2.0
-            r_bu = max(mesh_radius_bu, props.joint_radius / unit_scale)
-
-        # 3. Apply the subjective visual 'Visual Gizmo Scale' multiplier.
         final_scale = r_bu * props.visual_gizmo_scale
         
-        # Guard against zero/negative scale
-        if final_scale < config.MIN_GIZMO_SCALE:
-            final_scale = config.MIN_GIZMO_SCALE
+        # Guard against invisible scales
+        if final_scale < 0.001: final_scale = 0.001
 
         bone.custom_shape_scale_xyz = (final_scale, final_scale, final_scale)
         bone.use_custom_shape_bone_size = False
         bone.custom_shape_translation = (0, 0, 0)
-
-        
-
-        # AI Editor Note: The gizmo mesh is already pre-rotated by the create_flat_gizmo function.
-        # Applying any additional rotation here is redundant and was causing orientation instability
-        # when changing gizmo styles. Setting this to zero ensures that only the mesh's
-        # inherent orientation is used, which is now the single source of truth for alignment.
         bone.custom_shape_rotation_euler = (0, 0, 0)
 
 def get_mapped_axis_index(ui_axis_alignment: str) -> int:
@@ -7467,79 +7344,47 @@ def active_bone_change_handler(scene: bpy.types.Scene, depsgraph: bpy.types.Deps
     the active pose bone changes. When it does, it updates the global Joint
     Editor tool with the properties of the newly selected bone.
     """
-    global _last_active_bone_name, _joint_editor_update_guard
+    global _last_active_bone_key, _joint_editor_update_guard
     # This handler can run in many contexts, so we need to be careful.
     context = bpy.context
-
     
-
-    # --- AI Editor Note: Enhanced selection logic ---
-    # Identify the target bone whether in Pose Mode (direct selection)
-    # or Object Mode (selecting a child mesh/gizmo).
+    # Identify the target bone using a more robust context-safe approach.
+    # We prioritize the evaluated object from the depsgraph to get accurate selection state.
     target_bone = None
-
+    active_obj = depsgraph.view_layer.objects.active
     
-
-    if context.mode == 'POSE' and context.active_pose_bone:
-
-        target_bone = context.active_pose_bone
-
-    elif context.mode == 'OBJECT' and context.active_object:
-
-        obj = context.active_object
-        rig = getattr(scene, "lsd_active_rig", None)
-        # Check if the object is a child of the active rig's bone
-        if rig and obj.parent == rig and obj.parent_type == 'BONE':
-
-            target_bone = rig.pose.bones.get(obj.parent_bone)
+    if active_obj:
+        if active_obj.type == 'ARMATURE' and active_obj.mode == 'POSE':
+            bone = active_obj.data.bones.active
+            if bone:
+                target_bone = active_obj.pose.bones.get(bone.name)
+        elif active_obj.parent and active_obj.parent.type == 'ARMATURE' and active_obj.parent_type == 'BONE':
+            # Support clicking a child mesh in Object Mode to detect its parent joint
+            target_bone = active_obj.parent.pose.bones.get(active_obj.parent_bone)
 
     if not target_bone:
-
-        _last_active_bone_name = None
+        _last_active_bone_key = None
         return
 
     # Robust selection key: Armature_Name + Bone_Name
     active_bone_key = f"{target_bone.id_data.name}:{target_bone.name}"
-    global _last_active_bone_key
-    
     if active_bone_key != _last_active_bone_key:
         _last_active_bone_key = active_bone_key
 
-        
-
-        # Guard to prevent the tool's update callback from firing and applying
-        # the old settings back to the bone we just read from.
-        _joint_editor_update_guard = True
-        try:
-
-            tool_props = scene.lsd_pg_joint_editor_settings
-            active_props = target_bone.lsd_pg_kinematic_props
-            # Copy all relevant properties from the bone whose data we just selected.
-            # We filter out collections and read-only system properties.
-            for prop_name, prop_data in tool_props.bl_rna.properties.items():
-
-                if prop_name in {"rna_type", "name"}: continue
-                if prop_data.type == 'COLLECTION': continue
-
-                
-
-                if hasattr(active_props, prop_name):
-
-                    setattr(tool_props, prop_name, getattr(active_props, prop_name))
-
-        except Exception as e:
-
-            print(f"URDF Sync Error: {e}")
-
-        finally:
-
-            _joint_editor_update_guard = False
+        # 1. Perform Automatic Radius Detection only if uninitialized (0.0).
+        # This ensures that once a user manual sets a radius, it is PERSISTENT and UNIQUE.
+        current_radius = target_bone.lsd_pg_kinematic_props.joint_radius
+        if current_radius < 1e-6: # effectively zero
+            mesh_radius = calculate_bone_mesh_radius(target_bone, scene)
+            if mesh_radius > 0:
+                target_bone.lsd_pg_kinematic_props.joint_radius = mesh_radius
             
-        # 3. Force UI Tag Redraw to ensure the sidebar immediately reflects the data change.
-        # This solves the "stale UI" issue where properties are updated but not redrawn.
-        if context.area:
-            context.area.tag_redraw()
-            
+        # 2. Force Refresh of UI
+        for window in bpy.context.window_manager.windows:
+            for area in window.screen.areas:
+                if area.type == 'VIEW_3D':
+                    area.tag_redraw()
+    
     elif not target_bone:
         _last_active_bone_key = None
 

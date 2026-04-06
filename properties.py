@@ -93,35 +93,131 @@ def dispatch_apply_bone_constraints():
     bpy.ops.lsd.apply_bone_constraints()
     return None
 
+def get_bone_from_props(props):
+    """Utility to find the PoseBone owner of a kinematic property group."""
+    if not props.id_data or not hasattr(props.id_data, "pose"):
+        return None
+    
+    # Direct search through pose bones to find the owner of this property instance.
+    # This is more robust than path_from_id() for custom PointerProperties.
+    for bone in props.id_data.pose.bones:
+        if bone.lsd_pg_kinematic_props == props:
+            return bone
+            
+    return None
+
 def update_joint_type_live(self, context):
     """Timer-based dispatcher for joint type changes."""
     from . import core
-    if isinstance(self.id_data, bpy.types.Scene) and not core._joint_editor_update_guard:
+    if core._joint_editor_update_guard: return
+    
+    if isinstance(self.id_data, bpy.types.Scene):
         bpy.app.timers.register(dispatch_apply_joint_type, first_interval=0.01)
+    else:
+        # Direct bone edit: Update THIS bone and potentially all other selected bones
+        bone = get_bone_from_props(self)
+        if bone:
+            core._joint_editor_update_guard = True # Block feedback loop from other selected bones
+            try:
+                new_type = self.joint_type
+                new_axis = self.axis_alignment
+                
+                # Identify batch: All selected bones in the same rig
+                selected_bones = [b for b in bone.id_data.pose.bones if b.bone.select]
+                for target in selected_bones:
+                    props = target.lsd_pg_kinematic_props
+                    # Sync the core properties
+                    props.joint_type = new_type
+                    props.axis_alignment = new_axis
+                    
+                    # Apply kinematic side effects (gizmos, constraints, mechanics)
+                    core.clean_conflicting_mechanics(target)
+                    core.update_single_bone_gizmo(target, context.scene.lsd_viz_gizmos, context.scene.lsd_gizmo_style)
+                    core.apply_native_constraints(target)
+            finally:
+                core._joint_editor_update_guard = False
 
 def update_joint_radius_live(self, context):
     """Timer-based dispatcher for joint radius changes."""
     from . import core
-    if isinstance(self.id_data, bpy.types.Scene) and not core._joint_editor_update_guard:
+    if core._joint_editor_update_guard: return
+    
+    if isinstance(self.id_data, bpy.types.Scene):
         bpy.app.timers.register(dispatch_apply_joint_radius, first_interval=0.01)
+    else:
+        bone = get_bone_from_props(self)
+        if bone:
+            core._joint_editor_update_guard = True
+            try:
+                new_radius = self.joint_radius
+                selected_bones = [b for b in bone.id_data.pose.bones if b.bone.select]
+                for target in selected_bones:
+                    target.lsd_pg_kinematic_props.joint_radius = new_radius
+                    core.update_single_bone_gizmo(target, context.scene.lsd_viz_gizmos, context.scene.lsd_gizmo_style)
+            finally:
+                core._joint_editor_update_guard = False
 
 def update_joint_viz_scale_live(self, context):
-    """Timer-based dispatcher for visual gizmo scale changes."""
+    """Timer-based dispatcher for visual scale changes."""
     from . import core
-    if isinstance(self.id_data, bpy.types.Scene) and not core._joint_editor_update_guard:
+    if core._joint_editor_update_guard: return
+    
+    if isinstance(self.id_data, bpy.types.Scene):
         bpy.app.timers.register(dispatch_apply_joint_viz_scale, first_interval=0.01)
+    else:
+        bone = get_bone_from_props(self)
+        if bone:
+            core._joint_editor_update_guard = True
+            try:
+                new_scale = self.visual_gizmo_scale
+                selected_bones = [b for b in bone.id_data.pose.bones if b.bone.select]
+                for target in selected_bones:
+                    target.lsd_pg_kinematic_props.visual_gizmo_scale = new_scale
+                    core.update_single_bone_gizmo(target, context.scene.lsd_viz_gizmos, context.scene.lsd_gizmo_style)
+            finally:
+                core._joint_editor_update_guard = False
 
 def update_joint_limits_live(self, context):
     """Timer-based dispatcher for limit changes."""
     from . import core
-    if isinstance(self.id_data, bpy.types.Scene) and not core._joint_editor_update_guard:
+    if core._joint_editor_update_guard: return
+    
+    if isinstance(self.id_data, bpy.types.Scene):
         bpy.app.timers.register(dispatch_apply_joint_limits, first_interval=0.01)
+    else:
+        bone = get_bone_from_props(self)
+        if bone:
+            core._joint_editor_update_guard = True
+            try:
+                new_lower = self.lower_limit
+                new_upper = self.upper_limit
+                selected_bones = [b for b in bone.id_data.pose.bones if b.bone.select]
+                for target in selected_bones:
+                    target.lsd_pg_kinematic_props.lower_limit = new_lower
+                    target.lsd_pg_kinematic_props.upper_limit = new_upper
+                    core.apply_native_constraints(target)
+            finally:
+                core._joint_editor_update_guard = False
 
 def update_joint_ik_live(self, context):
     """Timer-based dispatcher for IK changes."""
     from . import core
-    if isinstance(self.id_data, bpy.types.Scene) and not core._joint_editor_update_guard:
+    if core._joint_editor_update_guard: return
+    
+    if isinstance(self.id_data, bpy.types.Scene):
         bpy.app.timers.register(dispatch_apply_joint_ik, first_interval=0.01)
+    else:
+        bone = get_bone_from_props(self)
+        if bone:
+            core._joint_editor_update_guard = True
+            try:
+                new_len = self.ik_chain_length
+                selected_bones = [b for b in bone.id_data.pose.bones if b.bone.select]
+                for target in selected_bones:
+                    target.lsd_pg_kinematic_props.ik_chain_length = new_len
+                    core.update_ik_chain_length(target, context)
+            finally:
+                core._joint_editor_update_guard = False
 
 def update_joint_tool_live(self, context):
 

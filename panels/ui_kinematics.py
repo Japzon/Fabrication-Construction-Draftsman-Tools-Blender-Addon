@@ -169,35 +169,40 @@ class LSD_PT_Kinematics_Setup:
 
                 
 
-                # --- AI Editor Note: Tool-based UI ---
-                # The UI now reads from and writes to global tool settings stored on the scene.
-                # This decouples the UI from the selection, making it more robust and solving
-                # visibility and multi-object editing issues.
-                tool_props = scene.lsd_pg_joint_editor_settings
-
+                # --- AI Editor Note: Direct Property UI ---
+                # The UI now reads and writes directly to the active bone's kinematic properties.
+                # This ensures that joint settings are persistent and unique to each individual joint.
+                active_bone = context.active_pose_bone
                 
-
-                # Header
-                header = joint_editor_box.row(align=True)
-                header.label(text="Joint Editor Tool", icon='CONSTRAINT_BONE')
-                header.operator("lsd.read_joint_settings", text="", icon='IMPORT')
+                # Support Object Mode selection via parent relationship
+                if not active_bone and context.active_object and context.active_object.parent_type == 'BONE':
+                    active_bone = context.active_object.parent.pose.bones.get(context.active_object.parent_bone)
                 
-                # --- Joint Constraints ---
-                col = joint_editor_box.column(align=True)
-                col.prop(tool_props, "joint_type")
-                
-                if tool_props.joint_type not in ['fixed', 'none']:
-                    col.prop(tool_props, "axis_alignment")
-                
-                if tool_props.joint_type != 'none':
-                    row = col.row(align=True)
-                    row.prop(tool_props, "joint_radius")
-                    row.prop(tool_props, "visual_gizmo_scale")
+                if active_bone:
+                    props = active_bone.lsd_pg_kinematic_props
                     
-                    if tool_props.joint_type in ['revolute', 'prismatic', 'spherical']:
+                    # Header
+                    header = joint_editor_box.row(align=True)
+                    header.label(text="Joint Editor Tool", icon='CONSTRAINT_BONE')
+                    
+                    # --- Joint Constraints ---
+                    col = joint_editor_box.column(align=True)
+                    col.prop(props, "joint_type")
+                    
+                    if props.joint_type not in ['fixed', 'none']:
+                        col.prop(props, "axis_alignment")
+                    
+                    if props.joint_type != 'none':
                         row = col.row(align=True)
-                        row.prop(tool_props, "lower_limit")
-                        row.prop(tool_props, "upper_limit")
+                        row.prop(props, "joint_radius")
+                        row.prop(props, "visual_gizmo_scale")
+                        
+                        if props.joint_type in ['revolute', 'prismatic', 'spherical']:
+                            row = col.row(align=True)
+                            row.prop(props, "lower_limit")
+                            row.prop(props, "upper_limit")
+                else:
+                    joint_editor_box.label(text="No joint selected.", icon='INFO')
 
                 joint_editor_box.separator()
                 
@@ -212,9 +217,9 @@ class LSD_PT_Kinematics_Setup:
                 col.operator("lsd.apply_rest_pose", icon='ARMATURE_DATA', text="Apply as Rest Pose")
                 
                 # --- Relationships ---
-                relations_col = joint_editor_box.column(align=True)
-                relations_col.separator()
-                relations_col.label(text="Relationships", icon='ACTION')
+                relations_box = joint_editor_box.column(align=True)
+                relations_box.separator()
+                relations_box.label(text="Relationships", icon='ACTION')
                 
                 # Gear Ratio / Mimic
                 active_bone = context.active_pose_bone
@@ -223,37 +228,41 @@ class LSD_PT_Kinematics_Setup:
                 if active_bone and active_obj and active_obj.type == 'ARMATURE':
                     props = active_bone.lsd_pg_kinematic_props
                     
+                    # Sub-panel for Drivers/Gear Ratios
+                    driver_box = relations_box.box()
+                    driver_box.label(text="Drivers / Gear Ratios", icon='DRIVER')
+                    
                     # LIST: Existing mimic drivers (if any)
                     if len(props.mimic_drivers) > 0:
-                        relations_col.template_list("LSD_UL_Mimic_Driver_List", "", props, "mimic_drivers", props, "mimic_drivers_index", rows=3)
-                        relations_col.separator()
+                        driver_box.template_list("LSD_UL_Mimic_Driver_List", "", props, "mimic_drivers", props, "mimic_drivers_index", rows=3)
+                        driver_box.separator()
 
                     # FORM: "Add New" section
-                    relations_col.label(text="Establish New Coupling:", icon='ADD')
+                    driver_box.label(text="Establish New Coupling:", icon='ADD')
                     
                     if active_obj.pose:
-                        row_t = relations_col.row(align=True)
+                        row_t = driver_box.row(align=True)
                         row_t.prop_search(props, "ratio_target_bone", active_obj.pose, "bones", text="Target")
                         op_t = row_t.operator("lsd.pick_bone", text="", icon='EYEDROPPER')
                         op_t.mode = 0
 
-                        row_ref = relations_col.row(align=True)
+                        row_ref = driver_box.row(align=True)
                         row_ref.prop_search(props, "ratio_ref_bone", active_obj.pose, "bones", text="Ref Bone")
                         op_r = row_ref.operator("lsd.pick_bone", text="", icon='EYEDROPPER')
                         op_r.mode = 1
 
                     else:
+                        driver_box.label(text="Select an ARM/Rig for relationships", icon='ERROR')
 
-                        relations_col.label(text="Select an ARM/Rig for relationships", icon='ERROR')
-
-                    row_r = relations_col.row(align=True)
+                    row_r = driver_box.row(align=True)
                     row_r.prop(props, "ratio_value")
                     row_r.prop(props, "ratio_invert", text="Invert", toggle=True)
                     row_r.operator("lsd.calculate_ratio", text="", icon='DRIVER_DISTANCE')
-                    relations_col.operator("lsd.add_mimic", icon='ADD', text="Add / Update Driver")
+                    driver_box.operator("lsd.add_mimic", icon='ADD', text="Add / Update Driver")
 
+                else:
                     # Show info if no active bone for relationships
-                    relations_col.label(text="Select a bone to manage relationships.", icon='INFO')
+                    relations_box.label(text="Select a bone to manage relationships.", icon='INFO')
 
 def register():
 
