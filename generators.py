@@ -137,12 +137,14 @@ def generate_gear_mesh(bm: bmesh.types.BMesh, props, obj):
     s = 1.0 / unit_scale if unit_scale > 0 else 1.0
     teeth = max(1, props.gear_teeth_count)
     segs = teeth * 2
-    rad = props.gear_radius * s
-    width = props.gear_width * s
-    depth = props.gear_tooth_depth * s
+    # All radius and width properties carry 'unit=LENGTH' and are stored in METERS (BU).
+    # We must NOT apply the scene scale factor (s) as it creates 1000x distortions.
+    rad = props.gear_radius
+    width = props.gear_width
+    depth = props.gear_tooth_depth
     taper = props.gear_tooth_taper
     if props.type_gear == 'INTERNAL':
-        outer_rad = max(props.gear_outer_radius * s, rad + depth + 0.05*s)
+        outer_rad = max(props.gear_outer_radius, rad + depth + 0.05)
         mat = mathutils.Matrix.Translation((0,0,-width/2))
         res_outer = bmesh.ops.create_circle(bm, radius=outer_rad, segments=segs, matrix=mat)
         res_inner = bmesh.ops.create_circle(bm, radius=rad, segments=segs, matrix=mat)
@@ -170,11 +172,11 @@ def generate_rack_mesh(bm: bmesh.types.BMesh, props, obj):
     unit_scale = bpy.context.scene.unit_settings.scale_length
     s = 1.0 / unit_scale if unit_scale > 0 else 1.0
     teeth = max(1, props.rack_teeth_count)
-    total_l = props.rack_length * s
+    total_l = props.rack_length
     seg_l = total_l / teeth
-    w = props.rack_width * s
-    h = props.rack_height * s
-    d = props.rack_tooth_depth * s
+    w = props.rack_width
+    h = props.rack_height
+    d = props.rack_tooth_depth
     bmesh.ops.create_cube(bm, size=1.0)
     bmesh.ops.scale(bm, verts=bm.verts, vec=(seg_l, w, h))
     bmesh.ops.translate(bm, verts=bm.verts, vec=(seg_l/2, 0, -h/2))
@@ -198,50 +200,50 @@ def generate_rack_mesh(bm: bmesh.types.BMesh, props, obj):
 def generate_fastener_mesh(bm: bmesh.types.BMesh, props, obj, context):
     unit_scale = bpy.context.scene.unit_settings.scale_length
     s = 1.0 / unit_scale if unit_scale > 0 else 1.0
-    r = props.fastener_radius * s
-    l = props.fastener_length * s
+    r = props.fastener_radius
+    l = props.fastener_length
     bmesh.ops.create_cone(bm, cap_ends=True, radius1=r, radius2=r, depth=l, segments=12)
 
 def generate_electronics_mesh(bm: bmesh.types.BMesh, props, obj):
     unit_scale = bpy.context.scene.unit_settings.scale_length
     s = 1.0 / unit_scale if unit_scale > 0 else 1.0
     if 'MOTOR' in props.type_electronics:
-        r = props.joint_motor_radius * s; l = props.joint_motor_length * s
+        r = props.joint_motor_radius; l = props.joint_motor_length
         bmesh.ops.create_cone(bm, cap_ends=True, radius1=r, radius2=r, depth=l, segments=32)
         if props.joint_motor_shaft:
-            sl = props.joint_motor_shaft_length * s; sr = props.joint_motor_shaft_radius * s
+            sl = props.joint_motor_shaft_length; sr = props.joint_motor_shaft_radius
             bmesh.ops.create_cone(bm, cap_ends=True, radius1=sr, radius2=sr, depth=sl, segments=12, matrix=mathutils.Matrix.Translation((0,0,l/2+sl/2)))
     else:
         # Default box fallback
-        bmesh.ops.create_cube(bm, size=0.05*s)
+        bmesh.ops.create_cube(bm, size=0.05)
 
 def generate_wheel_mesh(bm: bmesh.types.BMesh, props, obj):
     unit_scale = bpy.context.scene.unit_settings.scale_length
     s = 1.0 / unit_scale if unit_scale > 0 else 1.0
-    r = props.wheel_radius * s; w = props.wheel_width * s
+    r = props.wheel_radius; w = props.wheel_width
     bmesh.ops.create_cone(bm, cap_ends=True, radius1=r, radius2=r, depth=w, segments=32)
     bmesh.ops.rotate(bm, verts=bm.verts, cent=(0,0,0), matrix=mathutils.Matrix.Rotation(math.radians(90), 4, 'X'))
 
 def generate_pulley_mesh(bm: bmesh.types.BMesh, props, obj):
     unit_scale = bpy.context.scene.unit_settings.scale_length
     s = 1.0 / unit_scale if unit_scale > 0 else 1.0
-    r = props.pulley_radius * s; w = props.pulley_width * s
+    r = props.pulley_radius; w = props.pulley_width
     bmesh.ops.create_cone(bm, cap_ends=True, radius1=r, radius2=r, depth=w, segments=32)
 
 def generate_stator_mesh(bm: bmesh.types.BMesh, props, obj, context):
     """Generates the stationary (base) components of a mechatronic joint."""
     unit_scale = bpy.context.scene.unit_settings.scale_length
     s = 1.0 / unit_scale if unit_scale > 0 else 1.0
-    r = props.joint_radius * s; w = props.joint_width * s
+    r = props.joint_radius; w = props.joint_width
     if props.type_basic_joint == 'JOINT_REVOLUTE':
         # Frame (Stator)
-        fw = props.joint_frame_width * s; fl = props.joint_frame_length * s
+        fw = props.joint_frame_width; fl = props.joint_frame_length
         # Align frame with the eye/axis
         bmesh.ops.create_cube(bm, size=1.0, matrix=mathutils.Matrix.Translation((0, -fl/2 - r, 0)) @ mathutils.Matrix.Scale(fw, 4, (1,0,0)) @ mathutils.Matrix.Scale(fl, 4, (0,1,0)) @ mathutils.Matrix.Scale(w, 4, (0,0,1)))
     
     elif props.type_basic_joint == 'JOINT_CONTINUOUS':
         # Motor Body (Stator)
-        br = props.joint_base_radius * s; bl = props.joint_base_length * s
+        br = props.joint_base_radius; bl = props.joint_base_length
         bmesh.ops.create_cone(bm, cap_ends=True, radius1=br, radius2=br, depth=bl, segments=32)
     
     elif props.type_basic_joint == 'JOINT_PRISMATIC':
@@ -250,14 +252,14 @@ def generate_stator_mesh(bm: bmesh.types.BMesh, props, obj, context):
     
     elif 'WHEELS' in props.type_basic_joint:
         # Rack Rail (Stator) - Already Vertical (Z)
-        rl = props.rack_length * s; rw = props.rack_width * s; rt = props.joint_sub_thickness * s
+        rl = props.rack_length; rw = props.rack_width; rt = props.joint_sub_thickness
         bmesh.ops.create_cube(bm, size=1.0, matrix=mathutils.Matrix.Scale(rt, 4, (1,0,0)) @ mathutils.Matrix.Scale(rw, 4, (0,1,0)) @ mathutils.Matrix.Scale(rl, 4, (0,0,1)))
 
 def generate_basic_joint_mesh(bm: bmesh.types.BMesh, props, obj, context):
     """Generates the moving (rotor/carriage) components of a mechatronic joint."""
     unit_scale = bpy.context.scene.unit_settings.scale_length
     s = 1.0 / unit_scale if unit_scale > 0 else 1.0
-    r = props.joint_radius * s; w = props.joint_width * s
+    r = props.joint_radius; w = props.joint_width
     sub_s = props.joint_sub_size * s; sub_t = props.joint_sub_thickness * s
     if props.type_basic_joint == 'JOINT_REVOLUTE':
         # Eye (Cylinder)

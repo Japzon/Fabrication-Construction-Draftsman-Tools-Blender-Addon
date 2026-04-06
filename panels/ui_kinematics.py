@@ -38,6 +38,24 @@ from .. import properties
 from .. import operators
 from . import ui_common
 
+class LSD_UL_Mimic_Driver_List(bpy.types.UIList):
+
+    """Listing for joint relationship drivers."""
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
+        if self.layout_type in {'DEFAULT', 'COMPACT'}:
+
+            row = layout.row(align=True)
+            row.label(text=item.target_bone, icon='BONE_DATA')
+            row.prop(item, "ratio", text="Ratio", emboss=False if index == getattr(active_data, active_propname) else True)
+            # Removal uses the operator
+            op = row.operator("lsd.remove_mimic", text="", icon='X', emboss=False)
+            op.index = index
+
+        elif self.layout_type == 'GRID':
+
+            layout.alignment = 'CENTER'
+            layout.label(text="", icon='CONSTRAINT')
+
 class LSD_PT_Kinematics_Setup:
 
     """
@@ -162,95 +180,77 @@ class LSD_PT_Kinematics_Setup:
                 # Header
                 header = joint_editor_box.row(align=True)
                 header.label(text="Joint Editor Tool", icon='CONSTRAINT_BONE')
-                # --- Sub-section: Joint Constraints ---
-                constraints_box = joint_editor_box.box()
-                constraints_box.prop(tool_props, "joint_type") # Now binds to scene property
-
+                header.operator("lsd.read_joint_settings", text="", icon='IMPORT')
                 
-
+                # --- Joint Constraints ---
+                col = joint_editor_box.column(align=True)
+                col.prop(tool_props, "joint_type")
+                
                 if tool_props.joint_type not in ['fixed', 'none']:
-
-                    constraints_box.prop(tool_props, "axis_enum")
-
+                    col.prop(tool_props, "axis_alignment")
                 
-
                 if tool_props.joint_type != 'none':
-
-                    size_box = constraints_box.box()
-                    row = size_box.row(align=True)
+                    row = col.row(align=True)
                     row.prop(tool_props, "joint_radius")
                     row.prop(tool_props, "visual_gizmo_scale")
+                    
+                    if tool_props.joint_type in ['revolute', 'prismatic', 'spherical']:
+                        row = col.row(align=True)
+                        row.prop(tool_props, "lower_limit")
+                        row.prop(tool_props, "upper_limit")
 
-                if tool_props.joint_type in ['revolute', 'prismatic']:
-
-                    limits_box = constraints_box.box()
-                    limits_box.label(text="Limits")
-                    row = limits_box.row(align=True)
-                    row.prop(tool_props, "lower_limit")
-                    row.prop(tool_props, "upper_limit")
-
-                # Joint Placement Mode
-                placement_box = joint_editor_box.box()
-                placement_box.label(text="Joint Placement Mode", icon='POSE_HLT')
-                if hasattr(scene, "lsd_placement_mode") and scene.lsd_placement_mode:
-
-                    placement_box.operator("lsd.toggle_placement", text="Stop Joint Placement Mode", icon='CANCEL')
-
-                else:
-
-                    placement_box.operator("lsd.toggle_placement", text="Start Joint Placement Mode", icon='POSE_HLT')
-
+                joint_editor_box.separator()
                 
-
-                placement_box.operator("lsd.apply_rest_pose", icon='ARMATURE_DATA', text="Apply as Rest Pose")
-                # --- Sub-section: Relationships ---
-                relations_box = joint_editor_box.box()
-                relations_box.label(text="Relationships", icon='ACTION')
+                # --- Joint Placement Mode ---
+                col = joint_editor_box.column(align=True)
+                col.label(text="Joint Placement Mode", icon='POSE_HLT')
+                if hasattr(scene, "lsd_placement_mode") and scene.lsd_placement_mode:
+                    col.operator("lsd.toggle_placement", text="Stop Joint Placement Mode", icon='CANCEL')
+                else:
+                    col.operator("lsd.toggle_placement", text="Start Joint Placement Mode", icon='POSE_HLT')
+                
+                col.operator("lsd.apply_rest_pose", icon='ARMATURE_DATA', text="Apply as Rest Pose")
+                
+                # --- Relationships ---
+                relations_col = joint_editor_box.column(align=True)
+                relations_col.separator()
+                relations_col.label(text="Relationships", icon='ACTION')
+                
                 # Gear Ratio / Mimic
-                # This part still needs an active bone to determine the target for prop_search
-                # This part requires an active bone and associated rig
                 active_bone = context.active_pose_bone
                 active_obj = context.active_object
-
                 
-
                 if active_bone and active_obj and active_obj.type == 'ARMATURE':
-
                     props = active_bone.lsd_pg_kinematic_props
-                    ratio_box = relations_box.box()
-                    ratio_box.label(text="Gear Ratio / Mimic", icon='CONSTRAINT')
+                    
+                    # LIST: Existing mimic drivers (if any)
                     if len(props.mimic_drivers) > 0:
+                        relations_col.template_list("LSD_UL_Mimic_Driver_List", "", props, "mimic_drivers", props, "mimic_drivers_index", rows=3)
+                        relations_col.separator()
 
-                        lbox = ratio_box.box()
-                        for i, m in enumerate(props.mimic_drivers):
-
-                            r = lbox.row()
-                            r.label(text=f"Target: {m.target_bone} (Ratio: {m.ratio:.2f})")
-                            op = r.operator("lsd.remove_mimic", text="", icon='X')
-                            op.index = i
-
-                    add_box = ratio_box.box()
-                    add_box.label(text="Add New Driver:")
-                    row_t = add_box.row(align=True)
+                    # FORM: "Add New" section
+                    relations_col.label(text="Establish New Coupling:", icon='ADD')
+                    
                     if active_obj.pose:
-
+                        row_t = relations_col.row(align=True)
                         row_t.prop_search(props, "ratio_target_bone", active_obj.pose, "bones", text="Target")
                         op_t = row_t.operator("lsd.pick_bone", text="", icon='EYEDROPPER')
                         op_t.mode = 0
-                        row_ref = add_box.row(align=True)
+
+                        row_ref = ratio_box.row(align=True)
                         row_ref.prop_search(props, "ratio_ref_bone", active_obj.pose, "bones", text="Ref Bone")
                         op_r = row_ref.operator("lsd.pick_bone", text="", icon='EYEDROPPER')
                         op_r.mode = 1
 
                     else:
 
-                        row_t.label(text="Select an ARM/Rig for relationships", icon='ERROR')
+                        ratio_box.label(text="Select an ARM/Rig for relationships", icon='ERROR')
 
-                    row_r = add_box.row(align=True)
+                    row_r = ratio_box.row(align=True)
                     row_r.prop(props, "ratio_value")
                     row_r.prop(props, "ratio_invert", text="Invert", toggle=True)
                     row_r.operator("lsd.calculate_ratio", text="", icon='DRIVER_DISTANCE')
-                    add_box.operator("lsd.add_mimic", icon='ADD', text="Add / Update Driver")
+                    ratio_box.operator("lsd.add_mimic", icon='ADD', text="Add / Update Driver")
 
                 else:
 
@@ -259,7 +259,7 @@ class LSD_PT_Kinematics_Setup:
 
 def register():
 
-    for cls in [LSD_PT_Kinematics_Setup]:
+    for cls in [LSD_UL_Mimic_Driver_List, LSD_PT_Kinematics_Setup]:
 
         if hasattr(cls, 'bl_rna'):
 
@@ -267,7 +267,7 @@ def register():
 
 def unregister():
 
-    for cls in reversed([LSD_PT_Kinematics_Setup]):
+    for cls in reversed([LSD_UL_Mimic_Driver_List, LSD_PT_Kinematics_Setup]):
 
         if hasattr(cls, 'bl_rna'):
 

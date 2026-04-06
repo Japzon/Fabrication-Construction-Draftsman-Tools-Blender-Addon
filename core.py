@@ -44,7 +44,7 @@ _prop_update_guard = False
 
 _joint_editor_update_guard = False
 
-_last_active_bone_name = None
+_last_active_bone_key = None
 
 _update_gizmo_guard = False
 
@@ -1211,11 +1211,11 @@ def apply_auto_smooth(obj: bpy.types.Object, is_rack: bool = False) -> None:
 
         bpy.ops.object.modifier_move_to_index(modifier=mod.name, index=len(obj.modifiers) - 1)
 
-def get_gizmo_rotation_matrix(joint_type: str, axis_enum: str) -> mathutils.Matrix:
+def get_gizmo_rotation_matrix(joint_type: str, axis_alignment: str) -> mathutils.Matrix:
 
     """Calculates the rotation matrix needed to align a default gizmo shape."""
     rot_matrix = mathutils.Matrix.Identity(4)
-    target_axis = axis_enum.replace("-", "")
+    target_axis = axis_alignment.replace("-", "")
     if joint_type == 'prismatic':
 
         if target_axis == 'X':
@@ -2216,7 +2216,7 @@ def build_example_arm(context: bpy.types.Context, scale_factor: float = 1.0):
         if pbone:
 
             pbone.lsd_pg_kinematic_props.joint_type = link_info['joint']
-            pbone.lsd_pg_kinematic_props.axis_enum = link_info['axis']
+            pbone.lsd_pg_kinematic_props.axis_alignment = link_info['axis']
             update_single_bone_gizmo(pbone, context.scene.lsd_viz_gizmos)
             apply_native_constraints(pbone)
 
@@ -2318,7 +2318,7 @@ def build_example_rover(context: bpy.types.Context, scale_factor: float = 1.0):
         if pbone:
 
             pbone.lsd_pg_kinematic_props.joint_type = 'continuous'
-            pbone.lsd_pg_kinematic_props.axis_enum = 'Y'
+            pbone.lsd_pg_kinematic_props.axis_alignment = 'Y'
             update_single_bone_gizmo(pbone, context.scene.lsd_viz_gizmos)
             apply_native_constraints(pbone)
 
@@ -2351,7 +2351,7 @@ def build_example_rover(context: bpy.types.Context, scale_factor: float = 1.0):
         if pbone:
 
             pbone.lsd_pg_kinematic_props.joint_type = link_info['joint']
-            pbone.lsd_pg_kinematic_props.axis_enum = link_info['axis']
+            pbone.lsd_pg_kinematic_props.axis_alignment = link_info['axis']
             update_single_bone_gizmo(pbone, context.scene.lsd_viz_gizmos)
             apply_native_constraints(pbone)
 
@@ -2434,7 +2434,7 @@ def build_mobile_base_diff_drive(context: bpy.types.Context, scale_factor: float
         if pbone:
 
             pbone.lsd_pg_kinematic_props.joint_type = 'continuous'
-            pbone.lsd_pg_kinematic_props.axis_enum = 'Y'
+            pbone.lsd_pg_kinematic_props.axis_alignment = 'Y'
             update_single_bone_gizmo(pbone, context.scene.lsd_viz_gizmos)
             apply_native_constraints(pbone)
 
@@ -5419,7 +5419,7 @@ def rig_parametric_joint(context: bpy.types.Context, obj: bpy.types.Object) -> T
         if pbone_screw:
 
             pbone_screw.lsd_pg_kinematic_props.joint_type = 'continuous'
-            pbone_screw.lsd_pg_kinematic_props.axis_enum = 'Z'
+            pbone_screw.lsd_pg_kinematic_props.axis_alignment = 'Z'
             pbone_screw.lsd_pg_kinematic_props.joint_radius = radius
             update_single_bone_gizmo(pbone_screw, context.scene.lsd_viz_gizmos)
             apply_native_constraints(pbone_screw)
@@ -5466,7 +5466,7 @@ def rig_parametric_joint(context: bpy.types.Context, obj: bpy.types.Object) -> T
             'JOINT_SPHERICAL': 'base',
         }
         pbone_joint.lsd_pg_kinematic_props.joint_type = joint_type_map.get(props.type_basic_joint, 'fixed')
-        pbone_joint.lsd_pg_kinematic_props.axis_enum = 'Z'
+        pbone_joint.lsd_pg_kinematic_props.axis_alignment = 'Z'
         pbone_joint.lsd_pg_kinematic_props.joint_radius = radius
         # AI Editor Note: Set default limits for Revolute joints as requested (-115 to 115)
         if props.type_basic_joint == 'JOINT_REVOLUTE':
@@ -5599,7 +5599,7 @@ def _build_procedural_drone(context: bpy.types.Context, config: Dict[str, Any], 
         if pbone:
 
             pbone.lsd_pg_kinematic_props.joint_type = 'continuous'
-            pbone.lsd_pg_kinematic_props.axis_enum = 'Z'
+            pbone.lsd_pg_kinematic_props.axis_alignment = 'Z'
             update_single_bone_gizmo(pbone, True)
             apply_native_constraints(pbone)
 
@@ -5688,7 +5688,7 @@ def _build_procedural_plane(context: bpy.types.Context, config: Dict[str, Any], 
     if pbone:
 
         pbone.lsd_pg_kinematic_props.joint_type = 'continuous'
-        pbone.lsd_pg_kinematic_props.axis_enum = '-Y'
+        pbone.lsd_pg_kinematic_props.axis_alignment = '-Y'
         update_single_bone_gizmo(pbone, True)
         apply_native_constraints(pbone)
 
@@ -5790,7 +5790,7 @@ def _build_procedural_furniture(context: bpy.types.Context, config: Dict[str, An
         if pbone:
 
             pbone.lsd_pg_kinematic_props.joint_type = 'revolute'
-            pbone.lsd_pg_kinematic_props.axis_enum = 'Z'
+            pbone.lsd_pg_kinematic_props.axis_alignment = 'Z'
             pbone.lsd_pg_kinematic_props.lower_limit = 0 if side > 0 else -90
             pbone.lsd_pg_kinematic_props.upper_limit = 90 if side > 0 else 0
             update_single_bone_gizmo(pbone, True)
@@ -5879,7 +5879,7 @@ def _build_procedural_conveyor(context: bpy.types.Context, config: Dict[str, Any
     if pbone:
 
         pbone.lsd_pg_kinematic_props.joint_type = 'prismatic'
-        pbone.lsd_pg_kinematic_props.axis_enum = 'Y' # Bone Y is length/direction
+        pbone.lsd_pg_kinematic_props.axis_alignment = 'Y' # Bone Y is length/direction
         pbone.lsd_pg_kinematic_props.lower_limit = 0.0
         pbone.lsd_pg_kinematic_props.upper_limit = math.sqrt(length**2 + height**2)
         update_single_bone_gizmo(pbone, True)
@@ -6065,7 +6065,7 @@ def _build_procedural_humanoid(context: bpy.types.Context, config: Dict[str, Any
         context.view_layer.objects.active = rig; rig.select_set(True); bpy.ops.object.mode_set(mode='EDIT')
         rig.data.edit_bones[base_bone].parent = rig.data.edit_bones[parent_bone_name]
         bpy.ops.object.mode_set(mode='POSE')
-        pbone = rig.pose.bones.get(joint_bone); pbone.lsd_pg_kinematic_props.axis_enum = 'Z'
+        pbone = rig.pose.bones.get(joint_bone); pbone.lsd_pg_kinematic_props.axis_alignment = 'Z'
         parent_bone_name = joint_bone
         context.view_layer.update() # Update for next calculation
         current_pos = hip_joint.matrix_world @ mathutils.Vector((hip_joint.lsd_pg_mech_props.radius + hip_joint.lsd_pg_mech_props.rotor_arm_length, 0, 0))
@@ -6077,7 +6077,7 @@ def _build_procedural_humanoid(context: bpy.types.Context, config: Dict[str, Any
         context.view_layer.objects.active = rig; rig.select_set(True); bpy.ops.object.mode_set(mode='EDIT')
         rig.data.edit_bones[base_bone].parent = rig.data.edit_bones[parent_bone_name]
         bpy.ops.object.mode_set(mode='POSE')
-        pbone = rig.pose.bones.get(joint_bone); pbone.lsd_pg_kinematic_props.axis_enum = 'Y'
+        pbone = rig.pose.bones.get(joint_bone); pbone.lsd_pg_kinematic_props.axis_alignment = 'Y'
         parent_bone_name = joint_bone
         context.view_layer.update() # Update for next calculation
         current_pos = knee_joint.matrix_world @ mathutils.Vector((knee_joint.lsd_pg_mech_props.radius + knee_joint.lsd_pg_mech_props.rotor_arm_length, 0, 0))
@@ -6112,7 +6112,7 @@ def _build_procedural_humanoid(context: bpy.types.Context, config: Dict[str, Any
         context.view_layer.objects.active = rig; rig.select_set(True); bpy.ops.object.mode_set(mode='EDIT')
         rig.data.edit_bones[base_bone].parent = rig.data.edit_bones[parent_bone_name]
         bpy.ops.object.mode_set(mode='POSE')
-        pbone = rig.pose.bones.get(joint_bone); pbone.lsd_pg_kinematic_props.axis_enum = 'Y'
+        pbone = rig.pose.bones.get(joint_bone); pbone.lsd_pg_kinematic_props.axis_alignment = 'Y'
         parent_bone_name = joint_bone
         context.view_layer.update() # Update for next calculation
         current_pos = shoulder_joint.matrix_world @ mathutils.Vector((shoulder_joint.lsd_pg_mech_props.radius + shoulder_joint.lsd_pg_mech_props.rotor_arm_length, 0, 0))
@@ -6124,7 +6124,7 @@ def _build_procedural_humanoid(context: bpy.types.Context, config: Dict[str, Any
         context.view_layer.objects.active = rig; rig.select_set(True); bpy.ops.object.mode_set(mode='EDIT')
         rig.data.edit_bones[base_bone].parent = rig.data.edit_bones[parent_bone_name]
         bpy.ops.object.mode_set(mode='POSE')
-        pbone = rig.pose.bones.get(joint_bone); pbone.lsd_pg_kinematic_props.axis_enum = 'Y'
+        pbone = rig.pose.bones.get(joint_bone); pbone.lsd_pg_kinematic_props.axis_alignment = 'Y'
 
     # --- ACTION: HEAD ---
     unit_scale = context.scene.unit_settings.scale_length
@@ -6139,7 +6139,7 @@ def _build_procedural_humanoid(context: bpy.types.Context, config: Dict[str, Any
     context.view_layer.objects.active = rig; rig.select_set(True); bpy.ops.object.mode_set(mode='EDIT')
     rig.data.edit_bones[base_bone].parent = rig.data.edit_bones[torso_bone]
     bpy.ops.object.mode_set(mode='POSE')
-    pbone = rig.pose.bones.get(joint_bone); pbone.lsd_pg_kinematic_props.axis_enum = 'Z'
+    pbone = rig.pose.bones.get(joint_bone); pbone.lsd_pg_kinematic_props.axis_alignment = 'Z'
 
     
 
@@ -6454,17 +6454,17 @@ def _build_procedural_arm(context: bpy.types.Context, config: Dict[str, Any], sc
             if i == 0:
 
                 pbone.lsd_pg_kinematic_props.joint_type = 'continuous' # Base rotation
-                pbone.lsd_pg_kinematic_props.axis_enum = 'Z'
+                pbone.lsd_pg_kinematic_props.axis_alignment = 'Z'
 
             elif i % 2 == 1:
 
                 pbone.lsd_pg_kinematic_props.joint_type = 'revolute'
-                pbone.lsd_pg_kinematic_props.axis_enum = 'Y'
+                pbone.lsd_pg_kinematic_props.axis_alignment = 'Y'
 
             else:
 
                 pbone.lsd_pg_kinematic_props.joint_type = 'revolute'
-                pbone.lsd_pg_kinematic_props.axis_enum = 'Y' # Keep Y for main lift joints usually
+                pbone.lsd_pg_kinematic_props.axis_alignment = 'Y' # Keep Y for main lift joints usually
 
             
 
@@ -6631,7 +6631,7 @@ def _build_procedural_rover(context: bpy.types.Context, config: Dict[str, Any], 
         if pbone:
 
             pbone.lsd_pg_kinematic_props.joint_type = 'continuous'
-            pbone.lsd_pg_kinematic_props.axis_enum = 'Y'
+            pbone.lsd_pg_kinematic_props.axis_alignment = 'Y'
             update_single_bone_gizmo(pbone, True)
             apply_native_constraints(pbone)
 
@@ -6861,7 +6861,7 @@ def update_single_bone_gizmo(bone: bpy.types.PoseBone, show_gizmos: bool, style:
 
     # Get the UI-selected axis, which directly maps to the bone's local axis.
     # AI Editor Note: The 'BASE' gizmo is axis-independent.
-    raw_axis = props.axis_enum.replace("-", "")
+    raw_axis = props.axis_alignment.replace("-", "")
 
     
 
@@ -6962,7 +6962,7 @@ def update_single_bone_gizmo(bone: bpy.types.PoseBone, show_gizmos: bool, style:
         unit_scale = target_scene.unit_settings.scale_length
         s = 1.0 / unit_scale if unit_scale > 0 else 1.0
         # --- ACTION: Determine Base Scale ---
-        base_scale = 0.5 * s # Default fallback (normalized)
+        base_scale = 0.5 # Default fallback (normalized meters)
 
         
 
@@ -6985,35 +6985,34 @@ def update_single_bone_gizmo(bone: bpy.types.PoseBone, show_gizmos: bool, style:
             
 
             # Ensure it's at least as large as the manual radius property
-            # props.joint_radius is in meters, so multiply by s for BU.
-            if base_scale < props.joint_radius * s:
+            # props.joint_radius is already in BU (meters).
+            if base_scale < props.joint_radius:
 
-                base_scale = props.joint_radius * s
+                base_scale = props.joint_radius
 
         else:
 
             # Fallback to properties if no meshes attached.
-            # Convert meters to BU using s.
             if gizmo_type == 'ROTATION':
 
-                base_scale = props.joint_radius * s
+                base_scale = props.joint_radius
 
             elif gizmo_type == 'SLIDER':
 
-                # bone.length is in BU, so no 's' needed.
-                base_scale = bone.length / 2.0 if bone.length > config.MIN_BONE_LENGTH else 0.5 * s
+                # bone.length is in BU.
+                base_scale = bone.length / 2.0 if bone.length > config.MIN_BONE_LENGTH else 0.5
 
             elif gizmo_type == 'FIXED':
 
-                base_scale = props.joint_radius * 0.5 * s
+                base_scale = props.joint_radius * 0.5
 
             elif gizmo_type == 'BASE':
 
                 # bone.length is in BU.
-                base_scale = bone.length if bone.length > 0.05 * s else (props.joint_radius * 2.0 * s)
-                if base_scale < 0.05 * s:
+                base_scale = bone.length if bone.length > 0.05 else (props.joint_radius * 2.0)
+                if base_scale < 0.05:
 
-                    base_scale = 0.5 * s
+                    base_scale = 0.5
 
                 
 
@@ -7024,30 +7023,30 @@ def update_single_bone_gizmo(bone: bpy.types.PoseBone, show_gizmos: bool, style:
 
                 
 
-        # --- AI Editor Note: Unified Radius Scaling ---
-        # 1. Start with the physical Meter-based Joint Radius converted to Blender Units (BU).
-        # This makes 'Joint Radius' the direct driver of the gizmo's physical size.
-        r_bu = props.joint_radius * s
-
+        # --- AI Editor Note: Physical Scale Normalization ---
+        # props.joint_radius is stored in physical Meters (CAD-standard).
+        # Blender's custom_shape_scale_xyz operates in raw Blender Units (BU).
+        # We MUST divide by unit_scale to get the equivalent BU scale for the gizmo.
+        # Example: 0.1m radius in a Millimeter scene (0.001 scale) needs a 100.0 BU gizmo scale.
+        unit_scale = target_scene.unit_settings.scale_length
+        if unit_scale <= 0: unit_scale = 1.0 # Guard against invalid scene zero-scale
         
-
-        # 2. If meshes exist, derive scale from their bounds but respect the Joint Radius as a minimum.
+        # 1. Normalize the joint radius to the current scene's Blender Units.
+        r_bu = props.joint_radius / unit_scale
+        
+        # 2. Derive scale from meshes if they exist (ensuring fit)
         if has_meshes:
+            # max(dims) is already in BU because the matrices were relative to the rig (BU).
+            # We respect joint_radius as a physical minimum, but allow the mesh to push it larger.
+            # Convert props.joint_radius (meters) to BU for comparison.
+            mesh_radius_bu = max(dims) / 2.0
+            r_bu = max(mesh_radius_bu, props.joint_radius / unit_scale)
 
-            # max(dims) is already in BU.
-            r_bu = props.joint_radius * s
-
-        
-
-        # 3. Apply the visual 'Gizmo Radius' multiplier.
-        # This allows for subjective visual tweaks on top of physical data.
+        # 3. Apply the subjective visual 'Visual Gizmo Scale' multiplier.
         final_scale = r_bu * props.visual_gizmo_scale
-
         
-
-        # Ensure the scale is never zero to prevent invisible gizmos.
+        # Guard against zero/negative scale
         if final_scale < config.MIN_GIZMO_SCALE:
-
             final_scale = config.MIN_GIZMO_SCALE
 
         bone.custom_shape_scale_xyz = (final_scale, final_scale, final_scale)
@@ -7062,25 +7061,21 @@ def update_single_bone_gizmo(bone: bpy.types.PoseBone, show_gizmos: bool, style:
         # inherent orientation is used, which is now the single source of truth for alignment.
         bone.custom_shape_rotation_euler = (0, 0, 0)
 
-    else:
-
-        bone.custom_shape = None
-
-def get_mapped_axis_index(ui_axis_enum: str) -> int:
+def get_mapped_axis_index(ui_axis_alignment: str) -> int:
 
     """
-    Converts the UI axis enum string (e.g., 'X', '-Y', 'Z') to a numerical
+    Converts the UI axis alignment string (e.g., 'X', '-Y', 'Z') to a numerical
     index (0, 1, 2) for use with Blender's vector and array properties.
     Args:
 
-        ui_axis_enum: The string representation of the axis from the UI.
+        ui_axis_alignment: The string representation of the axis from the UI.
 
     Returns:
 
         The corresponding integer index (0 for X, 1 for Y, 2 for Z).
 
     """
-    axis = ui_axis_enum.replace("-", "")
+    axis = ui_axis_alignment.replace("-", "")
     if axis == 'X': return 0
     if axis == 'Y': return 1
     # Default to Z for safety, although the enum should prevent other values.
@@ -7101,7 +7096,7 @@ def clean_conflicting_mechanics(bone: bpy.types.PoseBone) -> None:
 
     """
     props = bone.lsd_pg_kinematic_props
-    is_rot = props.joint_type in ['revolute', 'continuous']
+    is_rot = props.joint_type in ['revolute', 'continuous', 'spherical']
     is_lin = props.joint_type == 'prismatic'
     # Check if the bone's armature has any animation data (and thus, any drivers).
     if not (bone.id_data and bone.id_data.animation_data and bone.id_data.animation_data.drivers):
@@ -7165,7 +7160,7 @@ def apply_native_constraints(bone: bpy.types.PoseBone) -> None:
     """
     props = bone.lsd_pg_kinematic_props
     # Get the numerical index (0, 1, 2) corresponding to the UI selection.
-    ui_idx = get_mapped_axis_index(props.axis_enum)
+    ui_idx = get_mapped_axis_index(props.axis_alignment)
     # This block maps the UI axis to the bone's local axis.
     # AI Editor Note: Correcting axis misalignment.
     # The user reported a cyclic permutation where UI 'X' affected Blender's Y-axis,
@@ -7503,10 +7498,12 @@ def active_bone_change_handler(scene: bpy.types.Scene, depsgraph: bpy.types.Deps
         _last_active_bone_name = None
         return
 
-    active_bone_name = target_bone.name
-    if active_bone_name != _last_active_bone_name:
-
-        _last_active_bone_name = active_bone_name
+    # Robust selection key: Armature_Name + Bone_Name
+    active_bone_key = f"{target_bone.id_data.name}:{target_bone.name}"
+    global _last_active_bone_key
+    
+    if active_bone_key != _last_active_bone_key:
+        _last_active_bone_key = active_bone_key
 
         
 
@@ -7537,6 +7534,14 @@ def active_bone_change_handler(scene: bpy.types.Scene, depsgraph: bpy.types.Deps
         finally:
 
             _joint_editor_update_guard = False
+            
+        # 3. Force UI Tag Redraw to ensure the sidebar immediately reflects the data change.
+        # This solves the "stale UI" issue where properties are updated but not redrawn.
+        if context.area:
+            context.area.tag_redraw()
+            
+    elif not target_bone:
+        _last_active_bone_key = None
 
 def add_native_driver_relation(target_bone: bpy.types.PoseBone, source_bone_name: str, ratio: float, invert: bool = False) -> None:
 
@@ -7569,7 +7574,7 @@ def add_native_driver_relation(target_bone: bpy.types.PoseBone, source_bone_name
     apply_native_constraints(target_bone)
     # --- Determine Target Bone's Driven Property ---
     props_tgt = target_bone.lsd_pg_kinematic_props
-    ui_idx_tgt = get_mapped_axis_index(props_tgt.axis_enum)
+    ui_idx_tgt = get_mapped_axis_index(props_tgt.axis_alignment)
     # AI Editor Note: Re-instating axis mapping to match constraint logic.
     # The driver must target the same bone axis that is unlocked by the constraints.
     # The axis_map corrects a permutation between the UI selection and Blender's bone axes.
@@ -7577,14 +7582,14 @@ def add_native_driver_relation(target_bone: bpy.types.PoseBone, source_bone_name
     # Future AI: Do not "correct" this unless explicitly instructed.
     axis_map = {0: 2, 1: 0, 2: 1}
     idx_tgt = axis_map.get(ui_idx_tgt, ui_idx_tgt)
-    is_rot_tgt = props_tgt.joint_type in ['revolute', 'continuous']
+    is_rot_tgt = props_tgt.joint_type in ['revolute', 'continuous', 'spherical']
     data_path = "rotation_euler" if is_rot_tgt else "location"
     # --- Determine Source Bone's Driving Property ---
     props_src = source_bone.lsd_pg_kinematic_props
-    ui_idx_src = get_mapped_axis_index(props_src.axis_enum)
+    ui_idx_src = get_mapped_axis_index(props_src.axis_alignment)
     # Apply the same mapping to the source bone's axis to ensure the correct source value is read.
     idx_src = axis_map.get(ui_idx_src, ui_idx_src)
-    is_rot_src = props_src.joint_type in ['revolute', 'continuous']
+    is_rot_src = props_src.joint_type in ['revolute', 'continuous', 'spherical']
     # --- Find or Create the Driver ---
     driver_fcurve = None
     if target_bone.id_data.animation_data:
@@ -7660,7 +7665,13 @@ def add_native_driver_relation(target_bone: bpy.types.PoseBone, source_bone_name
          curr_val_tgt = target_bone.rotation_euler[idx_tgt]
 
     offset = curr_val_tgt - (curr_val_src * ratio * factor)
-    drv.expression = f"({u_var} * {ratio:.4f} * {factor}) + {offset:.4f}"
+    
+    # AI Editor Note: If the final target (follower) is linear, the result must be 
+    # divided by unit_scale to convert from meters back to Blender Units.
+    if not is_rot_tgt:
+        drv.expression = f"(({u_var} * {ratio:.4f} * {factor}) + {offset:.4f}) / {unit_scale:.6f}"
+    else:
+        drv.expression = f"({u_var} * {ratio:.4f} * {factor}) + {offset:.4f}"
     # Lock the driven property in the UI to prevent manual changes that would conflict with the driver.
     if is_rot_tgt:
 

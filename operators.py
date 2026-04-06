@@ -1691,7 +1691,7 @@ class LSD_OT_ReadJointSettings(bpy.types.Operator):
         tool_props = context.scene.lsd_pg_joint_editor_settings
         active_props = context.active_pose_bone.lsd_pg_kinematic_props
         tool_props.joint_type = active_props.joint_type
-        tool_props.axis_enum = active_props.axis_enum
+        tool_props.axis_alignment = active_props.axis_alignment
         tool_props.joint_radius = active_props.joint_radius
         tool_props.visual_gizmo_scale = active_props.visual_gizmo_scale
         tool_props.lower_limit = active_props.lower_limit
@@ -1848,7 +1848,7 @@ class LSD_OT_ApplyJointSettings(bpy.types.Operator):
                 if self.apply_type:
                     props.joint_type = tool_props.joint_type
                 if self.apply_axis:
-                    props.axis_enum = tool_props.axis_enum
+                    props.axis_alignment = tool_props.axis_alignment
                 if self.apply_radius:
                     props.joint_radius = tool_props.joint_radius
                 if self.apply_viz_scale:
@@ -1961,7 +1961,7 @@ class LSD_OT_ApplyBoneConstraints(bpy.types.Operator):
                 target_props = bone.lsd_pg_kinematic_props
                 # Sync properties
                 target_props.joint_type = source_props.joint_type
-                target_props.axis_enum = source_props.axis_enum
+                target_props.axis_alignment = source_props.axis_alignment
                 target_props.joint_radius = source_props.joint_radius
                 target_props.visual_gizmo_scale = source_props.visual_gizmo_scale
                 target_props.lower_limit = source_props.lower_limit
@@ -5888,7 +5888,7 @@ class LSD_OT_CreatePart(bpy.types.Operator):
 
                     tool_props = context.scene.lsd_pg_joint_editor_settings
                     tool_props.joint_type = pbone_joint.lsd_pg_kinematic_props.joint_type
-                    tool_props.axis_enum = pbone_joint.lsd_pg_kinematic_props.axis_enum
+                    tool_props.axis_alignment = pbone_joint.lsd_pg_kinematic_props.axis_alignment
                     tool_props.joint_radius = pbone_joint.lsd_pg_kinematic_props.joint_radius
                     tool_props.lower_limit = pbone_joint.lsd_pg_kinematic_props.lower_limit
                     tool_props.upper_limit = pbone_joint.lsd_pg_kinematic_props.upper_limit
@@ -6237,8 +6237,8 @@ class LSD_OT_CalculateRatio(bpy.types.Operator):
             target = bone.id_data.pose.bones.get(target_name)
             if target:
 
-                is_rot_self = props.joint_type in ['revolute', 'continuous']
-                is_rot_tgt = target.lsd_pg_kinematic_props.joint_type in ['revolute', 'continuous']
+                is_rot_self = props.joint_type in ['revolute', 'continuous', 'spherical']
+                is_rot_tgt = target.lsd_pg_kinematic_props.joint_type in ['revolute', 'continuous', 'spherical']
 
                 
 
@@ -6805,12 +6805,12 @@ def add_joint(robot: ET.Element, parent_bone: bpy.types.PoseBone, child_bone: bp
     if export_joint_type not in ['fixed']:
 
         axis_elem = ET.SubElement(joint, 'axis')
-        axis_enum = props.axis_enum
+        axis_alignment = props.axis_alignment
         # Convert UI enum to a vector. The axis is defined in the joint's local frame.
-        if 'X' in axis_enum: axis_vec = mathutils.Vector((1, 0, 0))
-        elif 'Y' in axis_enum: axis_vec = mathutils.Vector((0, 1, 0))
+        if 'X' in axis_alignment: axis_vec = mathutils.Vector((1, 0, 0))
+        elif 'Y' in axis_alignment: axis_vec = mathutils.Vector((0, 1, 0))
         else: axis_vec = mathutils.Vector((0, 0, 1)) # Z
-        if '-' in axis_enum: axis_vec *= -1.0
+        if '-' in axis_alignment: axis_vec *= -1.0
         axis_elem.set('xyz', f"{axis_vec.x} {axis_vec.y} {axis_vec.z}")
 
     # --- Limit Tag (for revolute and prismatic joints) ---
@@ -8299,7 +8299,7 @@ class LSD_OT_EnterObjectMode(bpy.types.Operator):
         bpy.ops.object.mode_set(mode='OBJECT')
         return {'FINISHED'}
 
-def _calculate_bone_geometry(objs: List[bpy.types.Object], axis_orient: str, reference_obj: bpy.types.Object = None) -> Tuple[mathutils.Vector, mathutils.Vector, mathutils.Vector, float]:
+def _calculate_bone_geometry(objs: List[bpy.types.Object], axis_orient: str, reference_obj: bpy.types.Object = None, unit_scale: float = 1.0) -> Tuple[mathutils.Vector, mathutils.Vector, mathutils.Vector, float]:
 
     """
     Calculates the head, tail, and roll for a bone based on one or more mesh objects.
@@ -8452,8 +8452,10 @@ def _calculate_bone_geometry(objs: List[bpy.types.Object], axis_orient: str, ref
 
             
 
-    if max_radius < 0.001: max_radius = 0.05
-    return head_world, tail_world, roll_vec_world, max_radius
+    if max_radius < 0.001: 
+        max_radius = 0.05 / (unit_scale if unit_scale > 0 else 1.0) # Ensure 0.05m fallback
+
+    return head_world, tail_world, roll_vec_world, max_radius * unit_scale
 
 def _process_bones_in_edit_mode(rig: bpy.types.Object, bones_to_create: List[Tuple[str, mathutils.Vector, mathutils.Vector, mathutils.Vector]]) -> None:
 
@@ -8509,7 +8511,7 @@ def _process_bones_in_pose_mode(rig: bpy.types.Object, bones_to_process: list, c
         if pbone:
 
             # AI Editor Note: Set the bone's axis property to match the alignment axis.
-            pbone.lsd_pg_kinematic_props.axis_enum = 'Z' if axis == 'AUTO' else axis
+            pbone.lsd_pg_kinematic_props.axis_alignment = 'Z' if axis == 'AUTO' else axis
             pbone.lsd_pg_kinematic_props.joint_type = 'none'
             pbone.lsd_pg_kinematic_props.joint_radius = radius
             update_single_bone_gizmo(pbone, context.scene.lsd_viz_gizmos, context.scene.lsd_gizmo_style)
@@ -8642,6 +8644,7 @@ class LSD_OT_AddBone(bpy.types.Operator):
         # --- 1. Gather Geometry Data ---
         bones_to_process = []
         axis_for_alignment = context.scene.lsd_bone_axis
+        unit_scale = context.scene.unit_settings.scale_length
 
         
 
@@ -8700,7 +8703,7 @@ class LSD_OT_AddBone(bpy.types.Operator):
 
             for reference, group_objs in groups:
 
-                head, tail, roll, radius = _calculate_bone_geometry(group_objs, axis_for_alignment, reference)
+                head, tail, roll, radius = _calculate_bone_geometry(group_objs, axis_for_alignment, reference, unit_scale)
                 # Reuse bone name if already parented
                 b_name = reference.parent_bone if reference.parent == rig and reference.parent_type == 'BONE' else f"Bone_{reference.name.replace('.', '_')}"
 
@@ -8731,7 +8734,7 @@ class LSD_OT_AddBone(bpy.types.Operator):
                 
 
                 primary_obj = meshes[0]
-                head, tail, roll, radius = _calculate_bone_geometry(meshes, axis_for_alignment, primary_obj)
+                head, tail, roll, radius = _calculate_bone_geometry(meshes, axis_for_alignment, primary_obj, unit_scale)
 
                 
 
@@ -8776,11 +8779,25 @@ class LSD_OT_AddBone(bpy.types.Operator):
         
 
         _process_bones_in_pose_mode(rig, bones_to_process, context)
-        # --- 4. Switch to Pose Mode ---
+        # --- 4. Switch to Pose Mode and sync selection ---
         context.view_layer.objects.active = rig
         bpy.ops.object.mode_set(mode='POSE')
+        
+        # AI Editor Note: Ensure the last bone added is both active and selected.
+        # This allows the following read_joint_settings call to succeed and populate the UI.
+        if bones_to_process:
+            last_b_name = bones_to_process[-1]['name']
+            pb = rig.pose.bones.get(last_b_name)
+            if pb:
+                rig.data.bones.active = pb.bone
+                pb.bone.select = True
 
         
+
+        # AI Editor Note: Sync tool settings with the newly created active bone.
+        # This solves the 'initial radius not recognized' bug by ensuring the sidebar
+        # immediately reflects the physical dimensions calculated from geometry.
+        bpy.ops.lsd.read_joint_settings()
 
         self.report({'INFO'}, f"Processed {len(bones_to_process)} bones.")
         return {'FINISHED'}

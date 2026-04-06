@@ -868,13 +868,20 @@ class LSD_PG_Mimic_Driver(bpy.types.PropertyGroup):
 
 class LSD_PG_Kinematic_Props(bpy.types.PropertyGroup):
 
+    collision: bpy.props.PointerProperty(type=LSD_PG_Collision_Properties)
+    inertial: bpy.props.PointerProperty(type=LSD_PG_Inertial_Properties)
+    material: bpy.props.PointerProperty(type=LSD_PG_Material_Properties)
+    transmission: bpy.props.PointerProperty(type=LSD_PG_Transmission_Properties)
+
     joint_type: bpy.props.EnumProperty(
+        name="Joint Type",
         items=[('none', "None", ""), ('base', "Base", ""), ('fixed', "Fixed", ""), ('revolute', "Revolute", ""), ('continuous', "Continuous", ""), ('prismatic', "Linear", ""), ('spherical', "Spherical", "")], 
         default='none',
         update=update_joint_type_live
 
     )
-    axis_enum: bpy.props.EnumProperty(
+    axis_alignment: bpy.props.EnumProperty(
+        name="Axis Alignment",
         items=[('X', "X", ""), ('Y', "Y", ""), ('Z', "Z", ""), ('-X', "-X", ""), ('-Y', "-Y", ""), ('-Z', "-Z", "")], 
         default='Z',
         update=update_joint_type_live
@@ -882,14 +889,15 @@ class LSD_PG_Kinematic_Props(bpy.types.PropertyGroup):
     )
     joint_radius: bpy.props.FloatProperty(name="Joint Radius", default=0.05, min=0.0, unit='LENGTH', update=update_joint_radius_live)
     visual_gizmo_scale: bpy.props.FloatProperty(name="Visual Gizmo Scale", default=1.0, min=0.0, update=update_joint_viz_scale_live)
-    lower_limit: bpy.props.FloatProperty(name="Lower", default=-90.0, update=update_joint_limits_live)
-    upper_limit: bpy.props.FloatProperty(name="Upper", default=90.0, update=update_joint_limits_live)
+    lower_limit: bpy.props.FloatProperty(name="Lower Limit", default=-90.0, update=update_joint_limits_live)
+    upper_limit: bpy.props.FloatProperty(name="Upper Limit", default=90.0, update=update_joint_limits_live)
     ik_chain_length: bpy.props.IntProperty(name="IK Chain Length", default=0, min=0, max=255, update=update_joint_ik_live)
     ratio_value: bpy.props.FloatProperty(name="Ratio", default=1.0)
     ratio_target_bone: bpy.props.StringProperty(name="Target Bone")
     ratio_ref_bone: bpy.props.StringProperty(name="Ref Bone")
     ratio_invert: bpy.props.BoolProperty(name="Invert", default=False)
     mimic_drivers: bpy.props.CollectionProperty(type=LSD_PG_Mimic_Driver)
+    mimic_drivers_index: bpy.props.IntProperty(default=0)
 
 class LSD_PG_AI_Props(bpy.types.PropertyGroup):
 
