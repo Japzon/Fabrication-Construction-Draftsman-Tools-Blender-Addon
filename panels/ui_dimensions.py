@@ -71,10 +71,10 @@ class LSD_PT_Dimensions_And_Precision_Transforms:
         
 
         if is_expanded:
+            col_main = box.column(align=True)
 
             # --- Section: Parametric Anchors (Moved from Procedural Toolkit) ---
-
-            anchor_box = box.box()
+            anchor_box = col_main.box()
 
             anchor_box.label(text="Parametric Anchors", icon='HOOK')
 
@@ -131,8 +131,7 @@ class LSD_PT_Dimensions_And_Precision_Transforms:
                     anchor_box.label(text="Mesh has active hooks", icon='INFO')
 
             # --- Smart Dimension Toolkit (Unified) ---
-
-            dim_toolkit_box = box.box()
+            dim_toolkit_box = col_main.box()
 
             dim_toolkit_box.label(text="Dimension Generator & Preferences", icon='DRIVER_DISTANCE')
 
@@ -282,56 +281,20 @@ class LSD_PT_Dimensions_And_Precision_Transforms:
 
                 
 
-            # --- Dimensions Master Interface (Consolidated Manager) ---
-            # Provides a unified list of dimensions for selective renaming, length management, and baking.
-            col.separator()
-            master_box = col.box()
-            master_box.label(text="Dimensions Master Interface", icon='OUTLINER')
-            
-            # New Feature: Manual List Management
-            row = master_box.row()
-            row.operator("lsd.add_to_dimension_master", text="Track Selected Dimensions", icon='ADD')
-            
-            master = context.scene.lsd_dimensions_master
-            if not master:
-                master_box.label(text="No tracked dimensions in master list.", icon='INFO')
-            else:
-                for idx, item in enumerate(master):
-                    host = item.obj
-                    if not host:
-                        continue
-                    
-                    row = master_box.row(align=True)
-                    # Selection (Tooltip derived from bl_label)
-                    op = row.operator("lsd.select_object_by_name", text="", icon='RESTRICT_SELECT_OFF')
-                    op.target_name = host.name
-                    
-                    # Name & Length sync
-                    row.prop(host, "name", text="")
-                    row.prop(host.lsd_pg_dim_props, "length", text="Length")
-                    
-                    # LINK DRIVER (Eyedropper) - Category 4 Logic
-                    row.prop(item, "driver_target", text="")
-
-                    # New Feature: Individual removal (X)
-                    rem_op = row.operator("lsd.remove_from_dimension_master", text="", icon='X')
-                    rem_op.index = idx
-            
-            # New Feature: Consolidated Exposure (Protocol Switch)
-            if master:
-                master_box.separator()
-                # AI Editor Note: 'Bake' now triggers local sidebar consolidation
-                master_box.operator("lsd.bake_dimensions_master", text="Group for Master Control", icon='GEOMETRY_NODES')
-
             # Global Hide/Show All Dimensions (Moved outside the box for direct accessibility)
             col.separator()
             col.prop(scene, "lsd_hide_all_dimensions", text="Hide All Dimensions", toggle=True, icon='HIDE_OFF' if not scene.lsd_hide_all_dimensions else 'HIDE_ON')
+
+            # --- Dimensions Master Tracker (Restored for Visibility) ---
+            # Provides a unified list of dimensions within the sidebar for quick management.
+            col.separator()
+            lsd_draw_master_tracker_ui(col, context)
+
             col.separator()
 
 
             # --- Accurate Scale (New) ---
-
-            scale_box = box.box()
+            scale_box = col_main.box()
 
             scale_box.label(text="Accurate Scaling", icon='CON_FOLLOWPATH')
 
@@ -358,11 +321,53 @@ class LSD_PT_Dimensions_And_Precision_Transforms:
             
 
 
-def lsd_draw_master_control_ui(layout, scene):
+def lsd_draw_master_tracker_ui(layout, context):
+    """Drawing logic for the un-grouped tracked dimensions."""
+    scene = context.scene
+    master_box = layout.box()
+    master_box.label(text="Dimensions Master Tracker", icon='OUTLINER')
+    
+    # Manual List Management
+    row = master_box.row()
+    row.operator("lsd.add_to_dimension_master", text="Track Selected Dimensions", icon='ADD')
+    
+    master = scene.lsd_dimensions_master
+    if not master:
+        master_box.label(text="No tracked dimensions in active list.", icon='INFO')
+    else:
+        for idx, item in enumerate(master):
+            host = item.obj
+            if not host: continue
+            
+            # --- Two-Row Master Entry ---
+            item_box = master_box.column(align=True)
+            
+            # Row 1: Selection | Name | Length
+            r1 = item_box.row(align=True)
+            sel_op = r1.operator("lsd.select_object_by_name", text="", icon='RESTRICT_SELECT_OFF')
+            sel_op.target_name = host.name
+            r1.prop(host, "name", text="")
+            r1.prop(host.lsd_pg_dim_props, "length", text="Length")
+            
+            # Row 2: Ratio | Parent/Target | Remove
+            r2 = item_box.row(align=True)
+            r2.prop(item, "ratio", text="Ratio")
+            r2.prop(item, "driver_target", text="Object")
+            
+            rem_op = r2.operator("lsd.remove_from_dimension_master", text="", icon='X')
+            rem_op.index = idx
+            
+            item_box.separator(factor=0.5)
+
+    if master:
+        master_box.separator()
+        master_box.prop(scene, "lsd_dim_tracker_group_name", text="Group Name")
+        master_box.operator("lsd.bake_dimensions_master", text="Group Tracked Dimensions", icon='GEOMETRY_NODES')
+
+def lsd_draw_grouped_dimensions_ui(layout, scene):
     """Core drawing logic for the persistent grouped dimensions."""
     grouped_sets = getattr(scene, "lsd_dimensions_grouped_sets", [])
     if not grouped_sets:
-        layout.label(text="No grouped dimensions.", icon='INFO')
         return
 
     for g_idx, group in enumerate(grouped_sets):
@@ -383,23 +388,24 @@ def lsd_draw_master_control_ui(layout, scene):
             for idx, item in enumerate(group.items):
                 host = item.obj
                 if not host: continue
-                row = box.row(align=True)
-                p_icon = 'DOT' if host.lsd_pg_dim_props.is_manual else 'OUTLINER_OB_FORCE_FIELD'
-                row.prop(host.lsd_pg_dim_props, "is_manual", text="", icon=p_icon, emboss=False)
-                op = row.operator("lsd.select_object_by_name", text="", icon='RESTRICT_SELECT_OFF')
-                op.target_name = host.name
-                controls = row.row(align=True)
-                controls.prop(host, "name", text="")
-                controls.prop(host.lsd_pg_dim_props, "length", text="Length")
-                rem_op = row.operator("lsd.remove_from_dimension_master", text="", icon='X')
+                
+                # --- Single-Row Item Layout (Grouped Archive) ---
+                item_box = box.row(align=True)
+                
+                sel_op = item_box.operator("lsd.select_object_by_name", text="", icon='RESTRICT_SELECT_OFF')
+                sel_op.target_name = host.name
+                item_box.prop(host, "name", text="")
+                item_box.prop(host.lsd_pg_dim_props, "length", text="Length")
+                
+                rem_op = item_box.operator("lsd.remove_from_dimension_master", text="", icon='X')
                 rem_op.index = idx
                 rem_op.group_index = g_idx
                 rem_op.is_grouped = True
 
-class LSD_PT_SceneMasterControl_TOP(bpy.types.Panel):
-    """Deeply injected sub-panel to guarantee top-of-tab visibility."""
-    bl_label = "Dimensions Grouped Control"
-    bl_idname = "LSD_PT_SceneMasterControl_TOP"
+class LSD_PT_Dimension_Group_Manager(bpy.types.Panel):
+    """Unified manager for archived dimension groups in the Scene Tab."""
+    bl_label = "Dimensions Group Manager"
+    bl_idname = "LSD_PT_Dimension_Group_Manager"
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
     bl_context = 'scene'
@@ -409,12 +415,12 @@ class LSD_PT_SceneMasterControl_TOP(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        lsd_draw_master_control_ui(layout, context.scene)
-        layout.separator()
+        # Grouped Sets (Persistent Archives)
+        lsd_draw_grouped_dimensions_ui(layout, context.scene)
 
 def register():
-    bpy.utils.register_class(LSD_PT_SceneMasterControl_TOP)
+    bpy.utils.register_class(LSD_PT_Dimension_Group_Manager)
 
 def unregister():
-    bpy.utils.unregister_class(LSD_PT_SceneMasterControl_TOP)
+    bpy.utils.unregister_class(LSD_PT_Dimension_Group_Manager)
 

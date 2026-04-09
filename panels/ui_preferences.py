@@ -96,10 +96,10 @@ class LSD_PT_Preferences:
         
 
         if is_expanded:
+            col_main = box.column(align=True)
 
             # --- Viewport Display Settings ---
-
-            display_box = box.box()
+            display_box = col_main.box()
 
             display_box.label(text="Viewport Display", icon='VIEW3D')
 
@@ -110,8 +110,7 @@ class LSD_PT_Preferences:
             row.prop(scene, "lsd_show_bones", text="Show Bones")
 
             # --- Scene Units ---
-
-            units_box = box.box()
+            units_box = col_main.box()
 
             units_box.label(text="Scene Units", icon='SCENE_DATA')
 
@@ -134,8 +133,7 @@ class LSD_PT_Preferences:
                 col.prop(unit_settings, "use_separate", text="Separate Units")
 
             # --- UI Behavior ---
-
-            behavior_box = box.box()
+            behavior_box = col_main.box()
 
             behavior_box.label(text="UI Behavior", icon='PREFERENCES')
 
@@ -187,8 +185,7 @@ class LSD_PT_Preferences:
             sorted_props = sorted(props.items(), key=lambda x: x[1])
 
             # --- Panel Visibility ---
-
-            visibility_box = box.box()
+            visibility_box = col_main.box()
 
             visibility_box.label(text="Visible Panels", icon='HIDE_OFF')
 
@@ -205,8 +202,7 @@ class LSD_PT_Preferences:
                     col.prop(scene, vis_prop, text=names[prop_name])
 
             # --- Panel Order ---
-
-            order_box = box.box()
+            order_box = col_main.box()
 
             order_box.label(text="Panel Order", icon='SORTSIZE')
 

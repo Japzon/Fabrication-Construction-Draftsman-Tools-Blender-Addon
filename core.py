@@ -3601,18 +3601,21 @@ def setup_native_slinky(slinky_obj, start_empty, end_empty):
 
         # --- 2. Create Backbone ---
         # AI Editor Note: Get middle hooks and join them with start/end in a single path.
-        coll_info = nodes.new('GeometryNodeCollectionInfo'); coll_info.transform_space = 'RELATIVE'; coll_info.separate_children = True
+        coll_info = nodes.new('GeometryNodeCollectionInfo'); coll_info.transform_space = 'RELATIVE'
+        coll_info.inputs['Separate Children'].default_value = True
         links.new(g_in.outputs[hooks_coll_sock.name], coll_info.inputs['Collection'])
 
         
 
         # We need to convert start/end objects to points too
-        p_start = nodes.new('GeometryNodeMeshLine'); p_start.count = 1
+        p_start = nodes.new('GeometryNodeMeshLine')
+        p_start.inputs['Count'].default_value = 1
         links.new(info_start.outputs['Location'], p_start.inputs['Start Location'])
 
         
 
-        p_end = nodes.new('GeometryNodeMeshLine'); p_end.count = 1
+        p_end = nodes.new('GeometryNodeMeshLine')
+        p_end.inputs['Count'].default_value = 1
         links.new(info_end.outputs['Location'], p_end.inputs['Start Location'])
 
         

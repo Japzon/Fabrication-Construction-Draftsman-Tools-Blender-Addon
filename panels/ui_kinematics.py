@@ -86,11 +86,10 @@ class LSD_PT_Kinematics_Setup:
         
 
         if is_expanded:
+            col_main = box.column(align=True)
 
             # --- AI Editor Note: New Cursor & Origin Tools ---
-            # This section provides quick access to 3D cursor placement and setting object origins,
-            # which are common and essential tasks when setting up kinematic chains and pivot points.
-            cursor_box = box.box()
+            cursor_box = col_main.box()
             cursor_box.label(text="Cursor & Origin Tools", icon='CURSOR')
             # AI Editor Note: Adding "Snap Cursor to Selected" and fixing the mislabeled "Snap Cursor to Origin".
             # AI Editor Note: Swapped positions of "To Selected" and "To Origin" per user request.
@@ -114,7 +113,7 @@ class LSD_PT_Kinematics_Setup:
             # Add a button that calls the operator to move the selected object's origin to the cursor.
             cursor_box.operator("lsd.set_origin_to_cursor", icon='OBJECT_ORIGIN')
             # --- Section: Active Robot ---
-            robot_box = box.box()
+            robot_box = col_main.box()
             robot_box.label(text="Active Robot", icon='OUTLINER_OB_ARMATURE')
             col = robot_box.column(align=True)
             col.prop(scene, "lsd_active_rig", text="")
@@ -125,7 +124,7 @@ class LSD_PT_Kinematics_Setup:
             row.operator("lsd.create_rig", icon='ADD', text="New")
             row.operator("lsd.merge_armatures", icon='LINKED', text="Merge Armatures")
             # --- Section: Bone Tools ---
-            bone_tools_box = box.box()
+            bone_tools_box = col_main.box()
             bone_tools_box.label(text="Bone Tools", icon='BONE_DATA')
             col = bone_tools_box.column(align=True)
             col.prop(scene, "lsd_bone_mode", text="")
@@ -163,8 +162,7 @@ class LSD_PT_Kinematics_Setup:
                         show_editor = True
 
             if show_editor:
-
-                joint_editor_box = box.box()
+                joint_editor_box = col_main.box()
 
                 
 

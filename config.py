@@ -80,6 +80,7 @@ LSD_PANEL_PROPS: List[str] = [
     "lsd_panel_enabled_camera", "lsd_show_panel_camera",
     "lsd_panel_enabled_architectural", "lsd_show_panel_architectural",
     "lsd_panel_enabled_vehicle", "lsd_show_panel_vehicle",
+    "lsd_panel_enabled_presets", "lsd_show_panel_presets",
     "lsd_panel_enabled_preferences", "lsd_show_panel_preferences",
 ]
 

@@ -528,7 +528,7 @@ def update_dimension_driver_target(self, context):
         # 2. Immediate Sync (Copy length once)
         if hasattr(target_obj, "lsd_pg_dim_props"):
              host.lsd_pg_dim_props.is_manual = True # AI Editor Note: Must be manual to prevent sync fighting
-             host.lsd_pg_dim_props.length = target_obj.lsd_pg_dim_props.length
+             host.lsd_pg_dim_props.length = target_obj.lsd_pg_dim_props.length * self.ratio
         
         # 3. Establish Persistent Driver
         drv = host.driver_add(target_path).driver
@@ -538,7 +538,7 @@ def update_dimension_driver_target(self, context):
         v_target = var.targets[0]
         v_target.id = target_obj
         v_target.data_path = 'lsd_pg_dim_props.length'
-        drv.expression = 'target_len'
+        drv.expression = f'target_len * {self.ratio:.6f}'
         
         # Force update
         host.update_tag()
@@ -747,6 +747,13 @@ class LSD_PG_Dimensions_Master_Item(bpy.types.PropertyGroup):
         name="Link Source",
         description="Link Source - Pick another dimension to mirror its length.",
         poll=lambda self, obj: obj.get("lsd_is_dimension") or obj.get("lsd_is_dimension_root"),
+        update=update_dimension_driver_target
+    )
+    ratio: bpy.props.FloatProperty(
+        name="Ratio", 
+        default=1.0, 
+        min=0.0001,
+        precision=3,
         update=update_dimension_driver_target
     )
 
@@ -1542,6 +1549,7 @@ def register():
     
 
     bpy.types.Scene.lsd_hook_placement_mode = bpy.props.BoolProperty(name="Hook Placement", default=False)
+    bpy.types.Scene.lsd_dim_tracker_group_name = bpy.props.StringProperty(name="New Group Name", default="Group 1", description="Title for the next dimension group created from tracked items")
 
     
 
@@ -1549,7 +1557,7 @@ def register():
     prop_names = [
         "lsd_order_ai_factory",    # 1: Generate
         "lsd_order_assets",        # 2: Asset Library
-        "lsd_order_parts",         # 3: Mechanical Presets
+        "lsd_order_presets",       # Consolidated Presets
         "lsd_order_electronics",   # 4: Electronic Presets
         "lsd_order_architectural", # 5: Architectural Presets
         "lsd_order_vehicle",       # 6: Vehicle Presets
@@ -1612,12 +1620,12 @@ def unregister():
             "lsd_hook_placement_mode", "lsd_camera_preset", "lsd_anchor_initial_size", "lsd_anchor_auto_size",
             "lsd_show_collisions", "lsd_dim_font_name", "lsd_dim_font_bold", "lsd_dim_font_italic",
             "lsd_dim_text_offset", "lsd_scale_mode", "lsd_scale_pivot", "lsd_scale_realtime",
-            "lsd_dimensions_master"
+            "lsd_dimensions_master", "lsd_dim_tracker_group_name"
         ]
         # Add order props
         prop_names = [
-            "lsd_order_ai_factory", "lsd_order_parts", "lsd_order_architectural", "lsd_order_vehicle",
-            "lsd_order_electronics", "lsd_order_procedural", "lsd_order_dimensions", "lsd_order_materials",
+            "lsd_order_ai_factory",            "lsd_order_presets", "lsd_order_procedural",
+ "lsd_order_dimensions", "lsd_order_materials",
             "lsd_order_lighting", "lsd_order_kinematics", "lsd_order_physics",
             "lsd_order_transmission", "lsd_order_assets", "lsd_order_export", "lsd_order_preferences"
         ]

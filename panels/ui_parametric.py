@@ -78,9 +78,10 @@ class LSD_PT_Procedural_Toolkit:
         box, is_expanded = ui_common.draw_panel_header(layout, context, "Procedural Toolkit", "lsd_show_panel_procedural", "lsd_panel_enabled_procedural")
 
         if is_expanded:
+            col_main = box.column(align=True)
+
             # --- Dedicated Sub-Panel: Path Tools ---
-            # This section consolidates core path manipulation and vertex-based instancing.
-            path_box = box.box()
+            path_box = col_main.box()
             path_box.label(text="Path Tools", icon='CURVE_PATH')
             
             row = path_box.row(align=True)

@@ -914,18 +914,20 @@ def group_dimension_master_list(context, dim_objs):
     sets = scene.lsd_dimensions_grouped_sets        
     
     # AI Editor Note: Creating a NEW set for this grouping batch
-    group_name = f"Group {len(sets) + 1}"
+    # Priority: Use the custom tracker group name if provided, else fallback to auto-counter
+    name_val = scene.lsd_dim_tracker_group_name if scene.lsd_dim_tracker_group_name.strip() else f"Group {len(sets) + 1}"
     new_set = sets.add()
-    new_set.name = group_name
+    new_set.name = name_val
     
     for host in dim_objs:
         new_item = new_set.items.add()
         new_item.obj = host
         
-        # 1. Recover Driver Target from Sidebar (Priority)
+        # 1. Recover Metadata from Sidebar (Priority)
         sidebar_item = next((m for m in master if m.obj == host), None)
-        if sidebar_item and sidebar_item.driver_target:
+        if sidebar_item:
              new_item.driver_target = sidebar_item.driver_target
+             new_item.ratio = sidebar_item.ratio
         
         # 2. Heuristic Driver Recovery (Fallback for Viewport-only selection)
         # If no sidebar entry exists, inspect the object's animation data to find the driver source.

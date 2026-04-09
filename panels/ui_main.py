@@ -49,19 +49,11 @@ from .. import operators
 from . import ui_common
 from .ui_ai_factory import LSD_PT_Generate
 
-from .ui_parts import LSD_PT_Mechanical_Presets
+from .ui_presets import LSD_PT_Presets
 from .ui_materials import LSD_PT_Materials_And_Textures
-
 from .ui_lighting import LSD_PT_Lighting_And_Atmosphere
-from . import ui_electronics
-
-from .ui_electronics import LSD_PT_Electronic_Presets
 from .ui_dimensions import LSD_PT_Dimensions_And_Precision_Transforms
-
 from .ui_parametric import LSD_PT_Procedural_Toolkit
-from .ui_architectural import LSD_PT_Architectural_Presets
-
-from .ui_vehicle import LSD_PT_Vehicle_Presets
 from .ui_physics import LSD_PT_Physics
 
 from .ui_transmission import LSD_PT_Transmission
@@ -103,10 +95,7 @@ class LSD_PT_FabricationConstructionDraftsmanTools(bpy.types.Panel):
 
         panel_map = [
             (LSD_PT_Generate, "lsd_order_ai_factory"),
-            (LSD_PT_Mechanical_Presets, "lsd_order_parts"),
-            (LSD_PT_Architectural_Presets, "lsd_order_architectural"),
-            (LSD_PT_Vehicle_Presets, "lsd_order_vehicle"),
-            (LSD_PT_Electronic_Presets, "lsd_order_electronics"),
+            (LSD_PT_Presets, "lsd_order_presets"),
             (LSD_PT_Procedural_Toolkit, "lsd_order_procedural"),
             (LSD_PT_Dimensions_And_Precision_Transforms, "lsd_order_dimensions"),
             (LSD_PT_Materials_And_Textures, "lsd_order_materials"),

@@ -203,14 +203,14 @@ class LSD_OT_BakeDimensionsMaster(bpy.types.Operator):
             
         from . import generators
         generators.group_dimension_master_list(context, unique_targets)
-        self.report({'INFO'}, f"Grouped {len(unique_targets)} dimensions to a new set in the sidebar.")
+        self.report({'INFO'}, f"Grouped {len(unique_targets)} dimensions to the Dimensions Group Manager (Scene Tab).")
         return {'FINISHED'}
 
 class LSD_OT_ImportGroupedDimensionsBack(bpy.types.Operator):
-    """Moves a specific group of dimensions back into the Sidebar Workspace."""
+    """Moves a specific group of dimensions back into the active Dimensions Master Tracker."""
     bl_idname = "lsd.import_grouped_dimensions_back"
     bl_label = "Import Back"
-    bl_description = "Move this specific dimension set back into the sidebar workspace for editing"
+    bl_description = "Move this specific dimension set back into the main Dimensions Master Tracker list for editing"
     bl_options = {'REGISTER', 'UNDO'}
     
     group_index: bpy.props.IntProperty()
@@ -224,6 +224,10 @@ class LSD_OT_ImportGroupedDimensionsBack(bpy.types.Operator):
             return {'CANCELLED'}
             
         target_group = sets[self.group_index]
+        
+        # Restore Group Name to Tracker for Title Continuity
+        scene.lsd_dim_tracker_group_name = target_group.name
+        
         count = 0
         for item in target_group.items:
             host = item.obj
@@ -233,8 +237,9 @@ class LSD_OT_ImportGroupedDimensionsBack(bpy.types.Operator):
             if not any(m.obj == host for m in master):
                 new_item = master.add()
                 new_item.obj = host
-                # PERSISTENT LINK SOURCE: Ensure we copy the reference back
+                # PERSISTENT LINK SOURCE: Ensure we copy the reference and ratio back
                 new_item.driver_target = item.driver_target
+                new_item.ratio = item.ratio
                 count += 1
         
         sets.remove(self.group_index)
